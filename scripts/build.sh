@@ -8,8 +8,8 @@
 #
 # scripts/payload/*.b64 is a gzipped tar of the extractors and the app
 # generator, split into parts small enough to travel through the GitHub API one
-# call at a time. Their names sort into the order they must be concatenated in.
-# The result is checksummed and unpacked here.
+# call at a time. Their names sort into the order they must be concatenated
+# in. The result is checksummed and unpacked here.
 #
 # Diagnostics for every run land at /build-log.html on the deployed site.
 
@@ -20,9 +20,10 @@ LOG=work/build.txt
 : > "$LOG"
 say() { echo "$@" | tee -a "$LOG"; }
 
-# The last published build: used to recover the embedded fonts, and as a safety
-# net so the site keeps serving the app if generation ever fails.
-CURRENT_BUILD="https://encounter-atlas-deploy-2.vercel.app/"
+# This site's own production URL. The previous deploy is where the inlined fonts
+# are recovered from, and it is the safety net that keeps the app served if
+# generation ever fails. Google Fonts covers the fonts if it is unreachable.
+CURRENT_BUILD="https://encounter-map-blue.vercel.app/"
 PAYLOAD_SHA256="db1e6ac35353e3fe20e39c9a1538c52547be8caac7738ea5d76734a83d7de7d1"
 export CURRENT_BUILD
 
