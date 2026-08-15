@@ -8,7 +8,8 @@
 #
 # scripts/payload/*.b64 is a gzipped tar of the extractors and the app
 # generator, split into parts small enough to travel through the GitHub API one
-# call at a time. It is concatenated, checksummed and unpacked here.
+# call at a time. Their names sort into the order they must be concatenated in.
+# The result is checksummed and unpacked here.
 #
 # Diagnostics for every run land at /build-log.html on the deployed site.
 
@@ -44,7 +45,7 @@ fi
 
 say ""
 say "=== payload ==="
-cat scripts/payload/part[0-9][0-9].b64 2>/dev/null \
+cat scripts/payload/part*.b64 2>/dev/null \
   | tr -d '[:space:]' | base64 -d > work/payload.tgz 2>>"$LOG"
 GOT=$(sha256sum work/payload.tgz 2>/dev/null | cut -d' ' -f1)
 if [ "$GOT" = "$PAYLOAD_SHA256" ]; then
@@ -64,7 +65,7 @@ else
   say "  sha256 MISMATCH - the payload parts do not reassemble"
   say "    expected  $PAYLOAD_SHA256"
   say "    got       ${GOT:-<nothing>}"
-  for f in scripts/payload/part[0-9][0-9].b64; do
+  for f in scripts/payload/part*.b64; do
     [ -f "$f" ] || continue
     say "    $(basename "$f")  $(tr -d '[:space:]' < "$f" | wc -c) chars  $(tr -d '[:space:]' < "$f" | sha1sum | cut -c1-12)"
   done
