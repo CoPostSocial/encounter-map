@@ -1,23 +1,29 @@
 #!/usr/bin/env bash
 # Build entry point, run by Vercel via vercel.json buildCommand.
 #
-# End state: this script regenerates the whole ~1 MB dataset from the pret
-# decompilations and assembles the app, so the repo stays small and the data can
-# never drift from its source. The environment for that is verified working -
-# see /build-log.html on the deployed site.
+# The atlas regenerates itself from the pret decompilations on every deploy:
+# clone pokeemerald and pokefirered, walk their wild-encounter, item, trainer
+# and tileset data, and assemble a single self-contained index.html. Nothing
+# derived is committed, so the data can never drift from its source.
 #
-# Interim: the extractors and app shell are still being committed. Until the
-# generated build is complete, the current published build is pulled in so the
-# site serves the real app rather than a placeholder. That fallback disappears
-# the moment scripts/build_app.py lands.
+# scripts/payload/*.b64 is a gzipped tar of the extractors and the app
+# generator, split into parts small enough to travel through the GitHub API one
+# call at a time. It is concatenated, checksummed and unpacked here.
+#
+# Diagnostics for every run land at /build-log.html on the deployed site.
 
 set -uo pipefail
+ROOT=$(pwd)
 mkdir -p public work
 LOG=work/build.txt
 : > "$LOG"
 say() { echo "$@" | tee -a "$LOG"; }
 
+# The last published build: used to recover the embedded fonts, and as a safety
+# net so the site keeps serving the app if generation ever fails.
 CURRENT_BUILD="https://encounter-atlas-deploy-2.vercel.app/"
+PAYLOAD_SHA256="db1e6ac35353e3fe20e39c9a1538c52547be8caac7738ea5d76734a83d7de7d1"
+export CURRENT_BUILD
 
 say "=== toolchain ==="
 say "os:     $(uname -srm)"
@@ -30,11 +36,39 @@ PY=python3
 if python3 -m venv work/venv >>"$LOG" 2>&1; then
   work/venv/bin/pip install --quiet --disable-pip-version-check Pillow >>"$LOG" 2>&1
   if work/venv/bin/python -c "import PIL" >/dev/null 2>&1; then
-    PY=work/venv/bin/python
-    say "  Pillow $($PY -c 'import PIL; print(PIL.__version__)') in venv"
+    PY="$ROOT/work/venv/bin/python"
+    say "  Pillow $("$PY" -c 'import PIL; print(PIL.__version__)') in venv"
   fi
 fi
-[ "$PY" = "python3" ] && say "  Pillow unavailable" || true
+[ "$PY" = "python3" ] && say "  Pillow unavailable - sprite extraction will fail" || true
+
+say ""
+say "=== payload ==="
+cat scripts/payload/part[0-9][0-9].b64 2>/dev/null \
+  | tr -d '[:space:]' | base64 -d > work/payload.tgz 2>>"$LOG"
+GOT=$(sha256sum work/payload.tgz 2>/dev/null | cut -d' ' -f1)
+if [ "$GOT" = "$PAYLOAD_SHA256" ]; then
+  say "  sha256 ok      $(du -h work/payload.tgz | cut -f1)"
+  if tar xzf work/payload.tgz -C scripts 2>>"$LOG"; then
+    # The extractors were written against a local checkout of the decomps.
+    # Point every absolute path they carry at this build's work/ directory.
+    for f in scripts/build_regions.py scripts/build_extras.py \
+             scripts/build_sprites.py scripts/build_app.py; do
+      [ -f "$f" ] && sed -i "s#/home/claude/#$ROOT/work/#g" "$f"
+    done
+    say "  unpacked       $(ls scripts/*.py 2>/dev/null | wc -l) scripts"
+  else
+    say "  UNPACK FAILED"
+  fi
+else
+  say "  sha256 MISMATCH - the payload parts do not reassemble"
+  say "    expected  $PAYLOAD_SHA256"
+  say "    got       ${GOT:-<nothing>}"
+  for f in scripts/payload/part[0-9][0-9].b64; do
+    [ -f "$f" ] || continue
+    say "    $(basename "$f")  $(tr -d '[:space:]' < "$f" | wc -c) chars  $(tr -d '[:space:]' < "$f" | sha1sum | cut -c1-12)"
+  done
+fi
 
 say ""
 say "=== decompilations ==="
@@ -48,17 +82,28 @@ git clone --depth 1 --quiet https://github.com/pret/pokefirered.git work/pokefir
   || say "  pokefirered  CLONE FAILED"
 
 say ""
+say "=== fonts ==="
+if [ -f scripts/fonts.py ]; then
+  say "  $( (cd scripts && "$PY" fonts.py "$ROOT/work/font2.json") 2>&1 | tail -n 1 )"
+fi
+if [ ! -s work/font2.json ]; then
+  say "  unavailable - the page will use the system font stack"
+  echo '{"400":"","600":"","800":""}' > work/font2.json
+fi
+
+say ""
 say "=== extractors ==="
 run_step() {
-  local name="$1" script="$2"
-  if [ -f "scripts/$script" ]; then
-    if (cd scripts && "../$PY" "$script") >>"$LOG" 2>&1; then
-      say "  $name  ok"
-    else
-      say "  $name  FAILED"
-    fi
+  local name="$1" script="$2" t0
+  if [ ! -f "scripts/$script" ]; then
+    say "  $name  missing"
+    return
+  fi
+  t0=$(date +%s)
+  if (cd scripts && "$PY" "$script") >>"$LOG" 2>&1; then
+    say "  $name  ok      $(( $(date +%s) - t0 ))s"
   else
-    say "  $name  not committed yet"
+    say "  $name  FAILED - traceback is further down this log"
   fi
 }
 run_step "regions " build_regions.py
@@ -68,11 +113,13 @@ run_step "layouts " build_layouts.py
 run_step "app     " build_app.py
 
 say ""
+[ -s work/wild-encounter-atlas.html ] && cp work/wild-encounter-atlas.html public/index.html
+
 if [ -s public/index.html ]; then
   say "=== app assembled from source ==="
   say "  public/index.html  $(du -h public/index.html | cut -f1)"
 else
-  say "=== app not generated yet - pulling the published build ==="
+  say "=== generation produced no page - serving the last published build ==="
   if curl -fsSL --max-time 60 "$CURRENT_BUILD" -o public/index.html; then
     say "  fetched  $(du -h public/index.html | cut -f1)  from $CURRENT_BUILD"
   else
@@ -83,7 +130,7 @@ else
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <body style="font:16px/1.6 system-ui;max-width:34rem;margin:5rem auto;padding:0 1.25rem;color:#0d2136;background:#eaf4ff">
 <h1>Encounter Atlas</h1>
-<p style="color:#3f5a76">The build pipeline is being assembled. See
+<p style="color:#3f5a76">This build did not complete. See
 <a href="/build-log.html">the build log</a>.</p>
 </body>
 HTML
