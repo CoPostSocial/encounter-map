@@ -1,0 +1,200 @@
+--- a/build_extras.py
++++ b/build_extras.py
+@@ -312,6 +312,168 @@
+             out[name] = steps
+     return out
+ 
++# ---------------------------------------------------------------- scripted mons
++# Everything you can get that is not a wild encounter table: the starter, gifts,
++# fossils, the static legendary sitting in a cave, the in-game trades. Each is a
++# script opcode somewhere in the map data.
++SCRIPT_OPS = [
++    (r'setwildbattle\s+(SPECIES_\w+)\s*,\s*(\d+)', 'static'),
++    (r'giveegg\s+(SPECIES_\w+)', 'egg'),
++]
++KIND_NOTE = {
++    'static': 'Standing on the map — one battle, and it is gone if you knock it out',
++    'gift': 'Handed to you',
++    'egg': 'Given as an egg',
++    'starter': 'Choose one at the start',
++    'trade': 'In-game trade',
++}
++
++
++def build_scripted(repo, maps):
++    """mapsec -> [{'s': species, 'l': level, 'k': kind, 'm': map name}]"""
++    dir_sec = {}
++    for p in glob.glob(os.path.join(repo, 'data/maps/*/map.json')):
++        mj = json.load(open(p))
++        if mj.get('region_map_section'):
++            dir_sec[os.path.basename(os.path.dirname(p))] = (mj['region_map_section'],
++                                                             pretty_map(mj['name']))
++    out = collections.defaultdict(list)
++    seen = set()
++
++    def add(sec, mapname, species, level, kind):
++        key = (sec, species, kind)
++        if species in ('SPECIES_NONE', 'SPECIES_EGG') or key in seen:
++            return
++        seen.add(key)
++        e = {'s': species_name(species), 'k': kind, 'm': mapname}
++        if level:
++            e['l'] = int(level)
++        out[sec].append(e)
++
++    for d, (sec, mapname) in dir_sec.items():
++        p = os.path.join(repo, 'data/maps', d, 'scripts.inc')
++        if not os.path.exists(p):
++            continue
++        txt = open(p, encoding='utf-8', errors='ignore').read()
++        for pat, kind in SCRIPT_OPS:
++            for m in re.finditer(pat, txt):
++                g = m.groups()
++                add(sec, mapname, g[0], g[1] if len(g) > 1 else 0, kind)
++        # givemon either names a species or holds one in a variable, which is
++        # how the starters and the Fighting Dojo's Hitmon choice are written.
++        # Following the variable also keeps dialogue portraits out: showmonpic
++        # appears all over ordinary conversation and gives nothing away.
++        for arg, lvl in re.findall(r'givemon\s+(\w+)\s*,\s*(\d+)', txt):
++            if arg.startswith('SPECIES_'):
++                add(sec, mapname, arg, lvl, 'gift')
++                continue
++            kind = 'starter' if 'STARTER' in arg else 'gift'
++            for sp in dict.fromkeys(re.findall(r'setvar\s+' + re.escape(arg) +
++                                               r'\s*,\s*(SPECIES_\w+)', txt)):
++                add(sec, mapname, sp, lvl, kind)
++
++    # Emerald keeps its three starters in a C table, not in a script.
++    p = os.path.join(repo, 'src/starter_choose.c')
++    if os.path.exists(p):
++        m = re.search(r'sStarterMon\[\w*\]\s*=\s*\{(.*?)\};', open(p).read(), re.S)
++        if m:
++            home = 'MAPSEC_ROUTE_101' if 'MAPSEC_ROUTE_101' in str(dir_sec) or True else None
++            for sp in re.findall(r'(SPECIES_\w+)', m.group(1)):
++                add(home, "Route 101 — Birch's bag", sp, 5, 'starter')
++
++    # in-game trades: what you give, and what you get back
++    for p in (os.path.join(repo, 'src/data/trade.h'),
++              os.path.join(repo, 'src/data/ingame_trades.h')):
++        if not os.path.exists(p):
++            continue
++        src = open(p).read()
++        for const, body in keyed_blocks(src, r'\[(INGAME_TRADE_\w+)\]\s*='):
++            sp = re.search(r'\.species\s*=\s*(SPECIES_\w+)', body)
++            rq = re.search(r'\.requestedSpecies\s*=\s*(SPECIES_\w+)', body)
++            if sp and rq:
++                out['TRADES'].append({'s': species_name(sp.group(1)), 'k': 'trade',
++                                      'for': species_name(rq.group(1))})
++    return out
++
++
++def hm_given(repo):
++    """Which HMs the game actually hands you.
++
++    FireRed still carries HM08 Dive in its item table and its TM/HM move list,
++    so a naive read credits half of Kanto with learning Dive. Nothing in the
++    game ever gives it to you. Emerald names the same items ITEM_HM_CUT rather
++    than ITEM_HM01, so check both spellings.
++    """
++    txt = []
++    for p in glob.glob(os.path.join(repo, 'data/**/*.inc'), recursive=True):
++        txt.append(open(p, encoding='utf-8', errors='ignore').read())
++    txt = '\n'.join(txt)
++    got = set()
++    for n, c in TMHM_CONST.items():
++        if not n.startswith('HM'):
++            continue
++        if re.search(r'\bITEM_%s\b' % n, txt) or re.search(r'\bITEM_HM_%s\b' % c[5:], txt):
++            got.add(n)
++    return got
++
++
++# ---------------------------------------------------------------- bosses
++BOSS_CLASS = ('Leader', 'Elite Four', 'Champion', 'Boss', 'Admin')
++def build_bosses(repo, trainers, tsec):
++    """Gym leaders, the Elite Four, the champion, rivals and team bosses.
++
++    Most are already placed as object events, but a few (Norman, Wallace,
++    Archie, the rival) sit behind movement scripts, so fall back to whichever
++    map's script file names the trainer.
++    """
++    placed = {}
++    for sec, rows in tsec.items():
++        for r in rows:
++            placed.setdefault(r['t'], sec)
++
++    mentioned = {}
++    for p in glob.glob(os.path.join(repo, 'data/maps/*/scripts.inc')):
++        d = os.path.basename(os.path.dirname(p))
++        mj = os.path.join(repo, 'data/maps', d, 'map.json')
++        if not os.path.exists(mj):
++            continue
++        sec = json.load(open(mj)).get('region_map_section')
++        if not sec:
++            continue
++        for t in set(re.findall(r'\b(TRAINER_\w+)\b',
++                                open(p, encoding='utf-8', errors='ignore').read())):
++            mentioned.setdefault(t, sec)
++
++    out = []
++    for tid, t in trainers.items():
++        cls, name = t.get('c', ''), t.get('n', '')
++        is_rival = bool(re.search(r'_(BRENDAN|MAY|RIVAL)', tid))
++        if not name or not t['p']:
++            continue
++        if not (any(b in cls for b in BOSS_CLASS) or is_rival):
++            continue
++        sec = placed.get(tid) or mentioned.get(tid)
++        if not sec:
++            continue
++        out.append({'t': tid, 'n': name, 'c': 'Rival' if is_rival else cls,
++                    'sec': sec, 'lv': max(m['l'] for m in t['p']),
++                    'p': t['p'], 'd': t.get('d', 0)})
++
++    # ROXANNE_1..5 are the same leader at rematch strengths, and the rival has
++    # one party per starter you could have picked. Collapse both to the first
++    # time you meet them and count what got folded in.
++    out.sort(key=lambda b: (b['n'], b['sec'], b['lv']))
++    keep, seen = [], {}
++    for b in out:
++        k = (b['n'], b['sec'])
++        if k in seen:
++            seen[k]['alt'] = seen[k].get('alt', 1) + 1
++            continue
++        seen[k] = b
++        keep.append(b)
++    return keep
++
++
+ # ---------------------------------------------------------------- trainers
+ def build_trainers(repo):
+     # class display names
+@@ -399,18 +561,26 @@
+     # "TM06" -> [move index, display name], so a TM chip can name its move and
+     # still match the item label the atlas already uses for pickups.
+     midx = {row[9]: i for i, row in enumerate(moves)}
+-    tmhm = [[n, midx[c], moves[midx[c]][0]]
++    hmok = hm_given(repo)
++    tmhm = [[n, midx[c], moves[midx[c]][0], 0 if n.startswith('HM') and n not in hmok else 1]
+             for n, c in sorted(TMHM_CONST.items(), key=lambda kv: (kv[0][0] == 'H', kv[0]))
+             if c in midx]
++    scripted = build_scripted(repo, None)
++    bosses = build_bosses(repo, trainers, tsec)
+     out[key] = {'items': items, 'species': species, 'evos': evos,
+                 'trainers': trainers, 'tsec': tsec,
+-                'moves': [r[:9] for r in moves], 'learn': learn, 'tmhm': tmhm}
++                'moves': [r[:9] for r in moves], 'learn': learn, 'tmhm': tmhm,
++                'scripted': scripted, 'bosses': bosses}
+     print(f"{key}: items={sum(len(v) for v in items.values())} in {len(items)} places | "
+           f"species={len(species)} evos={len(evos)} | trainers={len(trainers)} "
+           f"placed={sum(len(v) for v in tsec.values())} in {len(tsec)} places")
+     print(f"{key}: moves={len(moves)} tmhm={len(TMHM_MOVES)} learnsets={len(learn)} "
+           f"lv={sum(len(v.get('l', [])) for v in learn.values())} "
+           f"tm={sum(len(v.get('t', [])) for v in learn.values())}")
++    kinds = collections.Counter(e['k'] for v in scripted.values() for e in v)
++    print(f"{key}: HMs given={sorted(hmok)} ")
++    print(f"{key}: scripted={dict(kinds)} bosses={len(bosses)} "
++          f"unplaced={[b['n'] for b in bosses if not b['sec']][:6]}")
+ 
+ json.dump(out, open('/home/claude/extras.json', 'w'))
+ print('size KB:', os.path.getsize('/home/claude/extras.json') // 1024)
