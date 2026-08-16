@@ -1,0 +1,11 @@
+--- a/build_app.py
++++ b/build_app.py
+@@ -596,6 +596,8 @@
+   .itm{padding:12px 14px}
+   .m{padding:6px 15px 6px 6px}
+   .chipmon{padding:8px 16px 8px 6px;min-height:44px}
++  .eitem{padding:11px 15px;font-size:12.5px;min-height:44px}
++  .evostep{gap:10px}
+   .mobbar button{padding:13px 4px}
+ }
+ </style>
