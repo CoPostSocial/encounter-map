@@ -1,0 +1,182 @@
+--- a/build_app.py
++++ b/build_app.py
+@@ -92,7 +92,7 @@
+         'places': places, 'areas': reg['areas'], 'home': HOME[k],
+         'mon': EX[k]['species'], 'evo': EX[k]['evos'], 'trainers': EX[k]['trainers'],
+         'moves': EX[k]['moves'], 'learn': EX[k]['learn'], 'tmhm': EX[k]['tmhm'],
+-        'scripted': scripted, 'bosses': EX[k]['bosses'],
++        'scripted': scripted, 'bosses': EX[k]['bosses'], 'tc': EX[k]['tc'],
+     }
+ 
+ TA = sum(len(r['areas']) for r in R['regions'].values())
+@@ -213,6 +213,12 @@
+ .sortbar button[aria-pressed="true"]{background:var(--acc);color:var(--accInk);border-color:var(--acc)}
+ .chip{border:1px solid var(--line);background:var(--s2);color:var(--ink2);border-radius:999px;
+   padding:4px 10px;font-size:11.5px;font-weight:700;cursor:pointer}
++/* one scrolling line each, the way a phone app does filters, instead of six
++   stacked rows of pills pushing the content off the screen */
++.scroller{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;
++  padding:0 14px 10px;scroll-padding:14px}
++.scroller::-webkit-scrollbar{display:none}
++.scroller>*{flex:none}
+ .list{max-height:min(56vh,560px);overflow:auto;padding:6px 8px 10px}
+ .row{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:none;border:0;
+   border-radius:11px;padding:7px 9px;color:var(--ink);cursor:pointer;font-size:14px}
+@@ -438,6 +444,53 @@
+ .statrow .b.t3 i{background:linear-gradient(90deg,#7a52ea,#a98cff)}
+ .statrow .b.t2 i{background:linear-gradient(90deg,#f0980d,#ffc247)}
+ .statrow .b.t1 i{background:linear-gradient(90deg,#e8348a,#ff7ab3)}
++/* ---------- matchups ---------- */
++.mups{display:grid;gap:7px}
++.mrow{display:flex;align-items:center;gap:10px;padding:8px 11px;border-radius:12px;
++  border:1px solid var(--line);background:var(--s2)}
++.mrow .mlab{flex:none;min-width:64px;font-size:11.5px;font-weight:800;letter-spacing:.03em}
++.mrow .mlist{display:flex;flex-wrap:wrap;gap:5px}
++.mrow.m4{background:rgba(232,52,138,.10);border-color:rgba(232,52,138,.34)}
++.mrow.m4 .mlab{color:#c41f6f}
++.mrow.m2{background:rgba(240,152,13,.10);border-color:rgba(240,152,13,.32)}
++.mrow.m2 .mlab{color:#b56d00}
++.mrow.mh{background:rgba(21,135,232,.09);border-color:rgba(21,135,232,.28)}
++.mrow.mh .mlab{color:#0f6fc0}
++.mrow.mq{background:rgba(0,164,104,.10);border-color:rgba(0,164,104,.30)}
++.mrow.mq .mlab{color:#008051}
++.mrow.m0{background:var(--s3)}
++.mrow.m0 .mlab{color:var(--ink3)}
++.cnts{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:9px}
++.cnt{display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:13px;
++  border:1px solid var(--line);cursor:pointer;text-align:left;font:inherit;transition:.13s}
++.cnt:hover{border-color:var(--acc);transform:translateY(-2px)}
++.cnt .cmain{min-width:0;flex:1}
++.cnt .cmain b{display:block;font-size:14.5px;font-weight:800}
++.ctags{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-top:4px}
++.ctags .cx{font-size:11.5px;font-weight:800;color:#b56d00}
++.ctags .cback{font-size:10.5px;font-weight:700;color:#c41f6f}
++.plan{margin-top:10px;border:1px solid var(--line);border-radius:12px;background:var(--s2);overflow:hidden}
++.plan summary{cursor:pointer;padding:10px 13px;font-size:12.5px;font-weight:800;color:var(--acc2);
++  list-style:none;display:flex;align-items:center;gap:8px}
++.plan summary::-webkit-details-marker{display:none}
++.plan summary::before{content:'⚔';font-size:13px}
++.plan summary::after{content:'▾';margin-left:auto;transition:.2s}
++.plan[open] summary::after{transform:rotate(180deg)}
++.planbody{padding:0 11px 12px;display:grid;gap:7px}
++/* ---------- the full type grid ---------- */
++.tcwrap{overflow-x:auto;scrollbar-width:thin}
++.tcgrid{border-collapse:separate;border-spacing:2px;font-size:10.5px}
++.tcgrid th{font-weight:800;font-size:9.5px;letter-spacing:.03em;white-space:nowrap}
++.tcgrid thead th{writing-mode:vertical-rl;transform:rotate(180deg);height:62px;padding:0;color:var(--ink3)}
++.tcgrid tbody th{text-align:right;padding-right:6px;color:var(--ink2)}
++.tcgrid td{width:24px;height:24px;text-align:center;border-radius:5px;background:var(--s2);
++  color:var(--ink3);font-weight:800;cursor:default}
++.tcgrid td.v20{background:#e8348a;color:#fff}
++.tcgrid td.v5{background:#1587e8;color:#fff}
++.tcgrid td.v0{background:#33415a;color:#fff}
++.tcgrid td.v10{color:transparent}
++.tclegend{display:flex;gap:14px;flex-wrap:wrap;margin-top:12px;font-size:11.5px;font-weight:700;color:var(--ink2)}
++.tclegend i{display:inline-block;width:12px;height:12px;border-radius:4px;margin-right:5px;vertical-align:-1px}
+ .rolechip{display:inline-flex;align-items:center;gap:7px;margin:9px 0 3px;padding:6px 13px;
+   border-radius:999px;font-size:12.5px;font-weight:800;background:var(--accSoft);color:var(--acc2);
+   border:1px solid color-mix(in srgb,var(--acc) 34%,transparent)}
+@@ -502,6 +555,40 @@
+ .bwhere{display:inline-block;margin-top:10px;font-size:11.5px;font-weight:700;color:var(--ink2);
+   background:none;border:0;padding:0;cursor:pointer}
+ button.bwhere:hover{color:var(--acc2)}
++/* ---------- pokedex cards ---------- */
++.dexgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:10px;padding:1px}
++.dexcard{position:relative;border-radius:16px;padding:9px 10px 11px;border:1px solid var(--line);
++  background:var(--s1);cursor:pointer;text-align:left;overflow:hidden;isolation:isolate;
++  transition:transform .15s cubic-bezier(.2,.8,.3,1),box-shadow .15s,border-color .15s}
++.dexcard::before{content:'';position:absolute;inset:0;z-index:-2;background:var(--g)}
++/* the ball motif every official listing has sitting behind the artwork */
++.dexcard::after{content:'';position:absolute;right:-24px;bottom:-30px;width:98px;height:98px;z-index:-1;
++  border-radius:50%;border:10px solid rgba(255,255,255,.42)}
++.dexcard:hover{transform:translateY(-3px);box-shadow:0 14px 28px -14px rgba(13,33,54,.42);border-color:var(--line-2)}
++.dexcard:active{transform:scale(.97)}
++.dexcard[aria-current="true"]{border-color:var(--acc);box-shadow:0 0 0 2px var(--accSoft)}
++.dexno{position:absolute;top:8px;right:10px;font-size:10px;font-weight:800;color:rgba(13,33,54,.38);
++  font-variant-numeric:tabular-nums;letter-spacing:.02em}
++.dexart{display:flex;justify-content:center;align-items:flex-end;height:66px;margin-top:2px}
++.dexart .sp{filter:drop-shadow(0 4px 6px rgba(13,33,54,.28))}
++.dexname{font-size:13.5px;font-weight:800;line-height:1.2;margin-top:3px}
++.dextys{display:flex;gap:4px;margin-top:5px;flex-wrap:wrap}
++.dextys .ty{font-size:9.5px;padding:2px 7px}
++.dexmeta{font-size:10.5px;font-weight:700;color:var(--ink2);margin-top:5px}
++/* ---------- species hero ---------- */
++.hero{position:relative;border-radius:18px;padding:16px 18px 14px;overflow:hidden;isolation:isolate}
++.hero::before{content:'';position:absolute;inset:0;z-index:-2;background:var(--g)}
++.hero::after{content:'';position:absolute;right:-46px;top:-52px;width:196px;height:196px;z-index:-1;
++  border-radius:50%;border:19px solid rgba(255,255,255,.34)}
++.herotop{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
++.heroname{font-size:25px;font-weight:800;letter-spacing:-.015em;line-height:1.1}
++.herocat{font-size:12px;font-weight:700;color:var(--ink2);margin-top:3px}
++.herono{font-size:13px;font-weight:800;color:rgba(13,33,54,.4);font-variant-numeric:tabular-nums;flex:none}
++.herobody{display:flex;align-items:flex-end;gap:16px;margin-top:2px}
++.heroinfo{flex:1;min-width:0}
++.herodims{display:flex;gap:16px;margin-top:9px}
++.herodims div{font-size:11px;font-weight:700;color:var(--ink2)}
++.herodims b{display:block;font-size:14px;color:var(--ink);font-variant-numeric:tabular-nums}
+ .itm{display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:11px;background:var(--s2);
+   border:1px solid var(--line);cursor:pointer}
+ .itm:hover{border-color:var(--acc)}
+@@ -593,7 +680,10 @@
+   .mon .pc{width:50px;font-size:13px}
+   .dhd{padding:14px 14px 0} .dhd h2{font-size:19px}
+   .sec{padding:14px}
+-  .grid{grid-template-columns:1fr}
++  .grid{grid-template-columns:repeat(2,minmax(0,1fr))}
++  .tile2{padding:9px 10px}
++  .tile2 .k{font-size:9.5px}
++  .tile2 .v{font-size:12.5px}
+   .gcards{grid-template-columns:1fr}
+   .ghd{padding:20px 16px} .ghd h2{font-size:21px}
+   .gsec{padding:16px 14px}
+@@ -601,9 +691,32 @@
+   /* thumb-reachable tabs */
+   .mobbar{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:300;gap:6px;padding:8px 10px
+     calc(8px + env(safe-area-inset-bottom));background:#fff;border-top:3px solid var(--line)}
+-  .mobbar button{flex:1;border:0;border-radius:12px;padding:11px 4px;background:var(--s2);color:var(--ink2);
+-    font-size:12px;font-weight:800;cursor:pointer}
+-  .mobbar button[aria-selected="true"]{background:var(--acc);color:var(--accInk)}
++  .mobbar button{flex:1;border:0;border-radius:13px;padding:7px 2px 6px;background:none;color:var(--ink3);
++    font-size:10px;font-weight:800;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;
++    transition:color .14s,background .14s}
++  .mobbar button svg{width:21px;height:21px}
++  .mobbar button[aria-selected="true"]{background:var(--accSoft);color:var(--acc2)}
++  .mobbar button:active{transform:scale(.93)}
++  /* filters get one scrolling line apiece */
++  .sortbar,.chips{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;max-height:none;scrollbar-width:none}
++  .sortbar::-webkit-scrollbar,.chips::-webkit-scrollbar{display:none}
++  .sortbar>*,.chips>*{flex:none}
++  .sortbar{padding:0 12px 8px}
++  .chips{padding-bottom:4px}
++  .pad{padding:10px 12px 8px}
++  input[type=search]{padding:10px 13px;font-size:14px;border-width:1.5px}
++  .list{max-height:none}
++  .dexgrid{grid-template-columns:repeat(2,1fr);gap:9px}
++  .dexart{height:60px}
++  .heroname{font-size:22px}
++  .cnts{grid-template-columns:1fr}
++  .mrow{flex-direction:column;align-items:flex-start;gap:6px;padding:9px 11px}
++  .mrow .mlab{min-width:0}
++  .tcgrid td{width:20px;height:20px;font-size:9px}
++  .tcgrid thead th{height:52px;font-size:8.5px}
++  .tcgrid tbody th{font-size:8.5px}
++  /* the top bar's view switcher moves into the bottom bar on a phone */
++  #viewswitch{display:none}
+   .tabs{display:none}
+ }
+ @media(hover:none){
+@@ -774,9 +887,11 @@
+ </div>
+ 
+ <nav class="mobbar" id="mobbar">
+-  <button data-tab="places" aria-selected="true">Places</button>
+-  <button data-tab="mons" aria-selected="false">Pokémon</button>
+-  <button data-tab="items" aria-selected="false">Items</button>
++  <button data-nav="map" aria-selected="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/></svg><span>Map</span></button>
++  <button data-nav="dex" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h6M15 12h6"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/></svg><span>Pokédex</span></button>
++  <button data-nav="items" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 8h16l-1.2 11.2a2 2 0 0 1-2 1.8H7.2a2 2 0 0 1-2-1.8L4 8z"/><path d="M8.5 8V6a3.5 3.5 0 0 1 7 0v2"/></svg><span>Items</span></button>
++  <button data-nav="bosses" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 3.5 20 9l-9.5 9.5L5 13z"/><path d="m4 20 3-3M18 4h2v2"/></svg><span>Bosses</span></button>
++  <button data-nav="tips" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l2.2 5.1L20 9.6l-4 4 1 5.9-5-2.8-5 2.8 1-5.9-4-4 5.8-1.5L12 3z"/></svg><span>Tips</span></button>
+ </nav>
+ 
+ <footer>
