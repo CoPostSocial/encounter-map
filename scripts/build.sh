@@ -11,6 +11,10 @@
 # call at a time. Their names sort into the order they must be concatenated
 # in. The result is checksummed and unpacked here.
 #
+# That tarball is the frozen baseline. Every change since arrives as a unified
+# diff in scripts/patches/, applied in filename order -- a few KB per change
+# instead of re-sending the whole payload.
+#
 # Diagnostics for every run land at /build-log.html on the deployed site.
 
 set -uo pipefail
@@ -52,6 +56,20 @@ GOT=$(sha256sum work/payload.tgz 2>/dev/null | cut -d' ' -f1)
 if [ "$GOT" = "$PAYLOAD_SHA256" ]; then
   say "  sha256 ok      $(du -h work/payload.tgz | cut -f1)"
   if tar xzf work/payload.tgz -C scripts 2>>"$LOG"; then
+    if ! command -v patch >/dev/null 2>&1; then
+      say "  NO patch(1) - changes since the baseline cannot be applied"
+    fi
+    for p in scripts/patches/*.patch; do
+      [ -f "$p" ] || continue
+      if (cd scripts && patch -p1 -s --forward < "../$p") 2>>"$LOG"; then
+        say "  patched        $(basename "$p")"
+      else
+        # A half-applied patch would ship a subtly wrong app; refuse to build
+        # one and let the previous deploy keep serving instead.
+        say "  PATCH FAILED   $(basename "$p")"
+        rm -f scripts/build_app.py
+      fi
+    done
     # The extractors were written against a local checkout of the decomps.
     # Point every absolute path they carry at this build's work/ directory.
     for f in scripts/build_regions.py scripts/build_extras.py \
