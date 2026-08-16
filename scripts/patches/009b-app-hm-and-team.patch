@@ -1,0 +1,217 @@
+--- a/build_app.py
++++ b/build_app.py
+@@ -1532,6 +1610,13 @@
+         The number on the right is the percentage it beats.</div>`:''}</div></div>
+     ${evoFamily(name)}
+     ${movesSection(name)}
++    ${got.length?`<div class="sec"><div class="sechd"><h3>How you get it</h3></div><div class="grid">
++      ${got.map(r=>`<div class="itm" ${r.area?`data-place="${r.area}"`:''} style="${tint(name)}">
++        <span class="ico ${r.k}">${GOTICO[r.k]||'●'}</span>
++        <div><div class="nm">${GOTNAME[r.k]||r.k}${r.min?` · Lv ${r.min}`:''}</div>
++        <div class="sub">${r.where||r.area_name}</div></div></div>`).join('')}</div>
++      <div class="mut" style="font-size:11.5px;margin-top:10px">${
++        [...new Set(got.map(r=>GOTNOTE[r.k]))].filter(Boolean).join(' · ')}</div></div>`:''}
+     ${rows.length?`<div class="sec"><div class="sechd"><h3>Where to find it</h3></div><div class="mons">
+       ${rows.map(r=>`<div class="mon" data-place-area="${r.area}" style="${tint(name)}">
+         <div class="who"><b>${r.area_name}</b><span class="mut" style="font-size:12px">${MLABEL[r.method]}</span></div>
+@@ -1715,6 +1800,64 @@
+ }
+ 
+ /* ---------------- guide ---------------- */
++// How many of the eight HMs a Pokemon can carry. Field moves eat move slots,
++// so one Pokemon covering four of them frees up the rest of the team.
++function hmTable(){
++  // t[3] is 0 for a machine the game never hands out, which is how FireRed's
++  // leftover HM08 Dive stays out of the count.
++  const hms=R.tmhm.map((t,i)=>({n:t[0],mv:t[2],i,ok:t[3]!==0}))
++                  .filter(x=>x.n.startsWith('HM')&&x.ok);
++  const rows=[];
++  for(const name of Object.keys(R.species)){
++    const L=R.learn[name]; if(!L||!L.t||isSetPiece(name)) continue;
++    const got=[], bits=tmBits(L.t);
++    for(const h of hms) if(bits[h.i]) got.push(h);
++    if(!got.length) continue;
++    const m=R.mon[name]||{};
++    rows.push({name,got,n:got.length,bst:STATS.reduce((s,[k])=>s+(m[k]||0),0)});
++  }
++  rows.sort((a,b)=>b.n-a.n||b.bst-a.bst||a.name.localeCompare(b.name));
++  return {hms,rows};
++}
++// A set-piece legendary is a fine Pokemon and a useless recommendation: you get
++// it once, near the end. Anything you can only meet as a static high-level
++// battle is out of the team builder.
++function isSetPiece(name){
++  const rs=R.species[name]||[];
++  return rs.length>0 && rs.every(r=>r.k==='static') && rs.some(r=>(r.min||0)>=40);
++}
++function buildTeam(){
++  const hm=hmTable(), byName={};
++  hm.rows.forEach(r=>byName[r.name]=r);
++  const pool=Object.keys(R.species).filter(n=>{
++    const m=R.mon[n]; return m&&m.hp!==undefined&&!isSetPiece(n);
++  });
++  const team=[], haveT=new Set(), haveH=new Set();
++  while(team.length<6){
++    let best=null;
++    for(const n of pool){
++      if(team.includes(n)) continue;
++      const ts=types(n), hs=(byName[n]?byName[n].got:[]).map(h=>h.n);
++      const newT=ts.filter(t=>!haveT.has(t)).length;
++      const newH=hs.filter(h=>!haveH.has(h)).length;
++      const m=R.mon[n], bst=STATS.reduce((s,[k])=>s+(m[k]||0),0);
++      // Rank the tiebreak on what a Pokemon does in a fight, not on stat total:
++      // Shuckle's 505 is almost all defence and it wins nothing.
++      const use=Math.round((Math.max(statPct(R.rank.atk,m.atk||0),
++                                     statPct(R.rank.spa,m.spa||0))
++                            + statPct(R.rank.spe,m.spe||0))/2);
++      const sc=newT*3+newH*2+use/30;
++      if(!best||sc>best.sc) best={n,sc,newT,newH,ts,hs,bst,use};
++    }
++    if(!best) break;
++    best.ts.forEach(t=>haveT.add(t));
++    best.hs.forEach(h=>haveH.add(h));
++    team.push(best.n);
++    best.picked=team.length;
++    (team.why=team.why||[]).push(best);
++  }
++  return {team:team.why||[],types:haveT,hms:haveH,allHM:hm.hms};
++}
+ function drawGuide(){
+   const g=D.guide[region]||[];
+   document.getElementById('guidebody').innerHTML=`
+@@ -1725,8 +1868,108 @@
+     ${g.map(sec=>`<section class="card"><div class="gsec"><h3>${sec.g}</h3>
+       <div class="gcards">${sec.items.map(i=>`<div class="gcard">
+         <span class="sev ${i.sev}">${({gone:'Gone for good',delayed:'Delayed, not lost',oneuse:'Single use',timed:'Clock-gated'})[i.sev]}</span>
+-        <h4>${i.t}</h4><p>${i.b}</p><div class="where">📍 ${i.w}</div></div>`).join('')}</div></div></section>`).join('')}`;
++        <h4>${i.t}</h4><p>${i.b}</p><div class="where">📍 ${i.w}</div></div>`).join('')}</div></div></section>`).join('')}
++    ${teamSection()}
++    ${hmSection()}`;
++  const el=document.getElementById('guidebody');
++  el.querySelectorAll('[data-sp]').forEach(b=>b.onclick=()=>{setView('atlas');setTab('mons');selectSpecies(b.dataset.sp)});
+ }
++function hmSection(){
++  const {hms,rows}=hmTable();
++  const top=rows.filter(r=>r.n>=3).slice(0,14);
++  if(!top.length) return '';
++  return `<section class="card"><div class="gsec"><h3>Who can carry the HMs</h3>
++    <p class="mut" style="margin:0 0 12px;max-width:70ch;font-size:13.5px">${R.game} has ${hms.length} HMs
++    (${hms.map(h=>h.mv).join(', ')}) and they cannot be forgotten. Every one you hand to a real team member
++    costs an attacking slot, so the fewer Pokémon you need to cover them, the better. These are the ones you
++    can get in this game that learn the most.</p>
++    <div class="hmlist">${top.map(r=>`<div class="hmrow" data-sp="${r.name}" style="${tint(r.name)}">
++      ${sprite(r.name,44)}
++      <div class="hmmain"><div class="hmn">${r.name}<span class="mut" style="font-size:11px">BST ${r.bst}</span></div>
++        <div class="hmtags">${r.got.map(h=>`<span class="hmtag">${h.mv}</span>`).join('')}</div></div>
++      <div class="hmn2"><b>${r.n}</b><span>of ${hms.length}</span></div></div>`).join('')}</div>
++    </div></section>`;
++}
++function teamSection(){
++  const t=buildTeam();
++  if(!t.team.length) return '';
++  const missing=t.allHM.filter(h=>!t.hms.has(h.n));
++  return `<section class="card"><div class="gsec"><h3>A team that covers the game</h3>
++    <p class="mut" style="margin:0 0 12px;max-width:70ch;font-size:13.5px">Built by picking, six times over,
++    whichever Pokémon you can actually get in ${R.game} adds the most: a type nobody on the team has yet,
++    then an HM nobody can carry yet, then attacking power and speed as the tiebreak. Set-piece legendaries
++    are left out — you get them once, at the end. It is a starting point, not gospel.</p>
++    <div class="bosslist">${t.team.map(x=>`<div class="boss" style="${tint(x.n)}">
++      <div class="bhd"><span class="blv">${x.picked}</span><b>${x.n}</b>${badges(x.n)}</div>
++      <div class="party"><div class="pm" data-sp="${x.n}">${sprite(x.n,52)}<span>${x.n}</span>
++        <i>BST ${x.bst}</i></div></div>
++      <div class="mut" style="font-size:11.5px;margin-top:9px">${[
++        x.newT?`brings ${x.ts.filter((y,i)=>true).join('/')}`:'no new type',
++        x.newH?`carries ${x.hs.join(', ')}`:null,
++        `offence and speed beat ${x.use}% of the Pokédex`].filter(Boolean).join(' · ')}</div>
++      </div>`).join('')}</div>
++    <div class="mut" style="font-size:12px;margin-top:12px">Between them: ${t.types.size} of the 18 types,
++    and ${t.hms.size} of the ${t.allHM.length} HMs${missing.length?` — still need ${missing.map(h=>h.mv).join(' and ')}`:', all of them'}.</div>
++    </div></section>`;
++}
++/* ---------------- bosses and the big set-piece encounters ---------------- */
++const BOSSRANK={'Leader':1,'Elite Four':2,'Champion':3,'Rival':4,'Boss':5,
++                'Aqua Leader':5,'Magma Leader':5,'Aqua Admin':6,'Magma Admin':6};
++function drawBosses(){
++  // Trainer fights and the static legendaries are the same thing from where you
++  // are standing: a single scripted battle you prepare for. Interleave them by
++  // level, which in both games is the order you meet them.
++  const rows=[];
++  for(const b of (R.bosses||[])){
++    const pl=R.places[b.sec];
++    rows.push({kind:'t',lv:b.lv,b,place:pl,name:pl?pl.name:b.sec.replace('MAPSEC_','')});
++  }
++  for(const [sec,list] of Object.entries(R.scripted||{})){
++    if(sec==='TRADES') continue;
++    const pl=R.places[sec];
++    for(const e of list){
++      if(e.k!=='static') continue;
++      rows.push({kind:'m',lv:e.l||0,e,place:pl,name:e.m||(pl?pl.name:sec)});
++    }
++  }
++  rows.sort((a,b)=>a.lv-b.lv||(BOSSRANK[a.b?.c]||9)-(BOSSRANK[b.b?.c]||9));
++  const nT=rows.filter(r=>r.kind==='t').length, nM=rows.length-nT;
++  document.getElementById('bossbody').innerHTML=`
++    <section class="card"><div class="ghd"><h2>Every big fight in ${R.game}</h2>
++      <p class="mut" style="margin:8px 0 0;max-width:70ch;font-size:14px">${nT} trainers worth preparing for and
++      ${nM} legendaries and set-piece battles, in the order their levels put them. Gym leaders, the Elite Four,
++      the champion, your rival, the team bosses — full parties with the moves they actually carry.
++      Tap any Pokémon to open it, or the location to find it on the map.</p></div></section>
++    <section class="card"><div class="gsec">
++      <div class="bosslist">${rows.map(bossCard).join('')}</div></div></section>`;
++  const d=document.getElementById('bossbody');
++  d.querySelectorAll('[data-sp]').forEach(x=>x.onclick=()=>{setView('atlas');setTab('mons');selectSpecies(x.dataset.sp)});
++  d.querySelectorAll('[data-place]').forEach(x=>x.onclick=()=>{
++    setView('atlas');setTab('places');selectPlace(R.places[x.dataset.place])});
++}
++function bossCard(r){
++  const where=r.place?`<button class="bwhere" data-place="${r.place.id}">📍 ${r.name}</button>`
++                     :`<span class="bwhere">📍 ${r.name}</span>`;
++  if(r.kind==='m'){
++    const c=tcol(r.e.s);
++    return `<div class="boss legend" style="${tint(r.e.s)}">
++      <div class="bhd"><span class="blv">Lv ${r.lv}</span>
++        <b>${r.e.s}</b><span class="bcls" style="background:${c};color:${inkOn(c)}">Legendary</span></div>
++      <div class="party"><div class="pm" data-sp="${r.e.s}">${sprite(r.e.s,48)}<span>${r.e.s}</span><i>Lv${r.lv}</i></div></div>
++      ${where}</div>`;
++  }
++  const b=r.b;
++  return `<div class="boss">
++    <div class="bhd"><span class="blv">Lv ${r.lv}</span><b>${b.n}</b>
++      <span class="bcls">${b.c}</span>${b.d?'<span class="pill">Double</span>':''}
++      ${b.alt?`<span class="mut" style="font-size:11px">${b.alt} party variants</span>`:''}</div>
++    <div class="party">${b.p.map(m=>`<div class="pm" data-sp="${m.s}" title="${(m.m||[]).join(', ')}">
++      ${sprite(m.s,48)}<span>${m.s}</span><i>Lv${m.l}</i>
++      ${m.i?`<em>${m.i}</em>`:''}
++      ${(m.m||[]).filter(x=>x&&x!=='None').length?`<u>${m.m.filter(x=>x&&x!=='None').join(' · ')}</u>`:''}</div>`).join('')}</div>
++    ${where}</div>`;
++}
++
+ /* ---------------- inside a route: the game's own tile layout ---------------- */
+ const TERRAIN={'.':'#f3e7c4','g':'#4ed14f','w':'#2ea6f0','s':'#f5dd93','i':'#cdeefb',
+                'd':'#ffbe2e','l':'#c9a877','#':'#2f7a3d'};
+@@ -1830,7 +2073,7 @@
+   // every species in this place, with its best local slot
+   const local={};
+   for(const id of ids){
+-    const a=R.areas[id];
++    const a=R.areas[id]; if(!a) continue;
+     for(const [meth,blk] of Object.entries(a.methods))
+       for(const m of blk.mons){
+         const cur=local[m.species];
+@@ -1932,6 +2175,8 @@
+   document.getElementById('atlasview').style.display=v==='atlas'?'':'none';
+   document.getElementById('hereview').style.display=v==='here'?'':'none';
+   document.getElementById('guideview').style.display=v==='guide'?'':'none';
++  document.getElementById('bossview').style.display=v==='bosses'?'':'none';
++  if(v==='bosses') drawBosses();
+   document.getElementById('mobbar').style.display = v==='atlas' ? '' : 'none';
+   if(v==='here'){
+     if(!herePlace&&selPlace){herePlace=selPlace;document.getElementById('hereq').value=selPlace.name;}
+@@ -1996,6 +2241,7 @@
+   if(muteHash) return;
+   let h=region;
+   if(view==='guide') h+='/guide';
++  else if(view==='bosses') h+='/bosses';
+   else if(view==='here') h+='/here'+(herePlace?'/'+herePlace.id.replace('MAPSEC_',''):'');
+   else if(selSpecies) h+='/m/'+encodeURIComponent(selSpecies);
+   else if(selItem) h+='/i/'+encodeURIComponent(selItem);
