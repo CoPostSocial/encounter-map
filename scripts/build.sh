@@ -56,17 +56,15 @@ GOT=$(sha256sum work/payload.tgz 2>/dev/null | cut -d' ' -f1)
 if [ "$GOT" = "$PAYLOAD_SHA256" ]; then
   say "  sha256 ok      $(du -h work/payload.tgz | cut -f1)"
   if tar xzf work/payload.tgz -C scripts 2>>"$LOG"; then
-    if ! command -v patch >/dev/null 2>&1; then
-      say "  NO patch(1) - changes since the baseline cannot be applied"
-    fi
+    # Vercel's image has no patch(1), so apply_patch.py does the job.
     for p in scripts/patches/*.patch; do
       [ -f "$p" ] || continue
-      if (cd scripts && patch -p1 -s --forward < "../$p") 2>>"$LOG"; then
+      if (cd scripts && "$PY" apply_patch.py "../$p") >>"$LOG" 2>&1; then
         say "  patched        $(basename "$p")"
       else
         # A half-applied patch would ship a subtly wrong app; refuse to build
         # one and let the previous deploy keep serving instead.
-        say "  PATCH FAILED   $(basename "$p")"
+        say "  PATCH FAILED   $(basename "$p") - see the log tail"
         rm -f scripts/build_app.py
       fi
     done
