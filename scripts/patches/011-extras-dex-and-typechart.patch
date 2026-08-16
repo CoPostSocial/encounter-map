@@ -1,0 +1,121 @@
+--- a/build_extras.py
++++ b/build_extras.py
+@@ -134,8 +134,36 @@
+         yield m.group(1), src[m.end():end]
+ 
+ 
++def build_dex(repo):
++    """National Dex number, category, height and weight.
++
++    The species table is in internal order, not Dex order; pokedex.h holds the
++    National order as a plain enum, and every species maps to the entry of the
++    same name.
++    """
++    num, i = {}, 0
++    src = open(os.path.join(repo, 'include/constants/pokedex.h')).read()
++    body = src.split('enum', 1)[1]
++    for m in re.finditer(r'NATIONAL_DEX_(\w+)', body[:body.index('}')]):
++        if m.group(1) == 'NONE':
++            continue
++        i += 1
++        num[m.group(1)] = i
++    ent = {}
++    p = os.path.join(repo, 'src/data/pokemon/pokedex_entries.h')
++    if os.path.exists(p):
++        for const, blk in keyed_blocks(open(p).read(), r'\[NATIONAL_DEX_(\w+)\]\s*=\s*\{'):
++            cat = re.search(r'\.categoryName\s*=\s*_\("([^"]*)"\)', blk)
++            h = re.search(r'\.height\s*=\s*(\d+)', blk)
++            w = re.search(r'\.weight\s*=\s*(\d+)', blk)
++            ent[const] = (cat.group(1).title() if cat else '',
++                          int(h.group(1)) if h else 0, int(w.group(1)) if w else 0)
++    return num, ent
++
++
+ def build_species(repo):
+     src = open(os.path.join(repo, 'src/data/pokemon/species_info.h')).read()
++    dexnum, dexent = build_dex(repo)
+     out = {}
+     for const, body in keyed_blocks(src, r'\[(SPECIES_\w+)\]\s*=\s*\{'):
+         if const == 'SPECIES_NONE':
+@@ -168,6 +196,17 @@
+         if eg:
+             a, b = (title(x, 'EGG_GROUP_') for x in (eg.group(1), eg.group(2)))
+             d['egg'] = [a] if a == b else [a, b]
++        key = const[8:]
++        if key in dexnum:
++            d['dex'] = dexnum[key]
++        if key in dexent:
++            cat, h, w = dexent[key]
++            if cat:
++                d['cat'] = cat
++            if h:
++                d['ht'] = h        # decimetres
++            if w:
++                d['wt'] = w        # hectograms
+         out[name] = d
+     return out
+ 
+@@ -292,6 +331,40 @@
+     'EVO_LEVEL_SHEDINJA': lambda v, s: f'Level {v} with a spare Poké Ball and party slot → {s}',
+     'EVO_BEAUTY': lambda v, s: f'Level up with Beauty {v}+ → {s}',
+ }
++# ---------------------------------------------------------------- type chart
++def build_typechart(repo):
++    """The Gen III matchup table, read out of battle_main.c.
++
++    The table is a flat list of (attacking type, defending type, multiplier)
++    triples where the multiplier is fixed-point tenths: 20 is x2, 05 is x0.5,
++    00 is an immunity. Anything not listed is x1, so only the exceptions are
++    stored. A TYPE_FORESIGHT sentinel sits near the end: everything after it is
++    still a real matchup, it is only the block the game skips once a Ghost has
++    been Foresighted -- which is to say Normal and Fighting failing against
++    Ghost. Stopping at that sentinel loses both immunities, so skip the sentinel
++    row itself and read on to TYPE_ENDTABLE.
++    """
++    order = {}
++    for m in re.finditer(r'#define\s+(TYPE_\w+)\s+(\d+)',
++                         open(os.path.join(repo, 'include/constants/pokemon.h')).read()):
++        order[m.group(1)] = int(m.group(2))
++    src = open(os.path.join(repo, 'src/battle_main.c')).read()
++    body = re.search(r'gTypeEffectiveness\[\d*\]\s*=\s*\{(.*?)\n\};', src, re.S).group(1)
++    MUL = {'TYPE_MUL_NO_EFFECT': 0, 'TYPE_MUL_NOT_EFFECTIVE': 5,
++           'TYPE_MUL_SUPER_EFFECTIVE': 20, 'TYPE_MUL_NORMAL': 10}
++    chart = {}
++    for a, d, mul in re.findall(r'(TYPE_\w+)\s*,\s*(TYPE_\w+)\s*,\s*(TYPE_MUL_\w+)', body):
++        if a == 'TYPE_ENDTABLE':
++            break
++        if a == 'TYPE_FORESIGHT':
++            continue
++        chart.setdefault(a[5:].title(), {})[d[5:].title()] = MUL[mul]
++    # TYPE_MYSTERY is the "???" slot Curse uses; nothing is ever that type.
++    names = [k[5:].title() for k, v in sorted(order.items(), key=lambda kv: kv[1])
++             if v < 100 and k != 'TYPE_MYSTERY']
++    return {'names': names, 'chart': chart}
++
++
+ def build_evos(repo):
+     src = open(os.path.join(repo, 'src/data/pokemon/evolution.h')).read()
+     out = {}
+@@ -567,16 +640,21 @@
+             if c in midx]
+     scripted = build_scripted(repo, None)
+     bosses = build_bosses(repo, trainers, tsec)
++    tc = build_typechart(repo)
+     out[key] = {'items': items, 'species': species, 'evos': evos,
+                 'trainers': trainers, 'tsec': tsec,
+                 'moves': [r[:9] for r in moves], 'learn': learn, 'tmhm': tmhm,
+-                'scripted': scripted, 'bosses': bosses}
++                'scripted': scripted, 'bosses': bosses, 'tc': tc}
+     print(f"{key}: items={sum(len(v) for v in items.values())} in {len(items)} places | "
+           f"species={len(species)} evos={len(evos)} | trainers={len(trainers)} "
+           f"placed={sum(len(v) for v in tsec.values())} in {len(tsec)} places")
+     print(f"{key}: moves={len(moves)} tmhm={len(TMHM_MOVES)} learnsets={len(learn)} "
+           f"lv={sum(len(v.get('l', [])) for v in learn.values())} "
+           f"tm={sum(len(v.get('t', [])) for v in learn.values())}")
++    print(f"{key}: types={len(tc['names'])} matchups="
++          f"{sum(len(v) for v in tc['chart'].values())} "
++          f"(Fire→Grass {tc['chart']['Fire']['Grass']}, Ground→Flying "
++          f"{tc['chart']['Ground'].get('Flying')}, Normal→Ghost {tc['chart']['Normal']['Ghost']})")
+     kinds = collections.Counter(e['k'] for v in scripted.values() for e in v)
+     print(f"{key}: HMs given={sorted(hmok)} ")
+     print(f"{key}: scripted={dict(kinds)} bosses={len(bosses)} "
