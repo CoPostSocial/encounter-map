@@ -1,0 +1,181 @@
+--- a/build_app.py
++++ b/build_app.py
+@@ -42,13 +42,39 @@
+         screens.append({'id': sc['id'], 'name': sc['name'],
+                         'w': max(xs) - ox + 1, 'h': max(ys) - oy + 1,
+                         'tiles': [[t['x'] - ox, t['y'] - oy, t['sec']] for t in sc['tiles']]})
++    # Items and trainers are filed under their own map section, and most of
++    # those sections are interiors: Mt. Moon, Silph Co, Fiery Path. Route each
++    # section to the place that hosts it and keep the sub-location name, or
++    # every cave and building's contents drop out of the atlas entirely.
++    host, subname = {}, {}
++    for pid, pl in reg['places'].items():
++        host[pid] = pid
++        for s in pl.get('inside', []):
++            host[s['id']] = pid
++            subname[s['id']] = s['name']
++    for sid, (h, nm) in (reg.get('sec_home') or {}).items():
++        if sid not in host and h in reg['places']:
++            host[sid], subname[sid] = h, nm
++
++    def collect(src):
++        out = {}
++        for sid, rows in src.items():
++            h = host.get(sid)
++            if not h:
++                continue
++            sub = subname.get(sid)
++            for r in rows:
++                out.setdefault(h, []).append({**r, 'in': sub} if sub else dict(r))
++        return out
++    p_items, p_trn = collect(EX[k]['items']), collect(EX[k]['tsec'])
++
+     places = {}
+     for pid, pl in reg['places'].items():
+         pl = dict(pl)
+         ox, oy = offsets.get(pl['screen'], (0, 0))
+         pl['tiles'] = [[x - ox, y - oy] for x, y in pl['tiles']]
+-        pl['items'] = EX[k]['items'].get(pid, [])
+-        pl['trainers'] = EX[k]['tsec'].get(pid, [])
++        pl['items'] = p_items.get(pid, [])
++        pl['trainers'] = p_trn.get(pid, [])
+         places[pid] = pl
+     payload['regions'][k] = {
+         'name': reg['name'], 'game': reg['game'], 'screens': screens,
+@@ -182,6 +208,8 @@
+ .sp{--s:40px;width:var(--s);height:var(--s);flex:none;display:block;image-rendering:pixelated;
+   background-repeat:no-repeat;background-image:var(--sheet);
+   background-size:calc(var(--s)*var(--cols)) calc(var(--s)*var(--rowsn))}
++/* no sprite on the sheet: show nothing, not whatever sits at position 0,0 */
++.sp.q{background-image:none;border-radius:50%;background-color:var(--s3)}
+ .ty{display:inline-block;border-radius:999px;padding:3px 9px;font-size:10.5px;font-weight:800;
+   letter-spacing:.05em;text-transform:uppercase;line-height:1.35}
+ .tys{display:inline-flex;gap:4px;vertical-align:middle;flex-wrap:wrap}
+@@ -393,6 +421,25 @@
+ .ico.ball{background:rgba(61,151,245,.16);color:#5aa9ff}
+ .itm .nm{font-weight:700;font-size:14px}
+ .itm .sub{font-size:11.5px;color:var(--ink3)}
++/* evolution line */
++.evo{display:flex;flex-direction:column}
++.evorow{padding-left:calc(var(--d) * 20px)}
++.evomon{display:flex;align-items:center;gap:12px;width:100%;text-align:left;cursor:pointer;
++  padding:8px 12px 8px 8px;border-radius:12px;border:1px solid var(--line)}
++.evomon:hover{border-color:var(--line-2);filter:saturate(1.22) brightness(1.05)}
++.evomon:active{transform:scale(.985)}
++.evorow.on .evomon{border-color:var(--acc);box-shadow:0 0 0 2px var(--accSoft)}
++.evomon .en{display:flex;flex-direction:column;gap:2px;min-width:0}
++.evomon .en b{font-size:14.5px}
++.evomon .ew{font-size:11.5px;color:var(--ink2);font-weight:600}
++.evomon .ew.none{color:var(--ink3);font-weight:500}
++.evostep{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--ink2);
++  padding:6px 0 6px calc(var(--d) * 20px + 20px)}
++.evostep .ea{color:var(--ink3);font-weight:800;font-size:13px}
++.evostep .eh{font-weight:700}
++.eitem{cursor:pointer;font-size:11.5px;font-weight:800;border-radius:999px;padding:3px 10px;
++  border:1px solid var(--line-2);background:var(--s1);color:var(--ink)}
++.eitem:hover{border-color:var(--acc);color:var(--acc2)}
+ .trn{padding:11px 13px;border-radius:12px;background:var(--s2);border:1px solid var(--line)}
+ .trn .top{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+ .trn .top b{font-size:14.5px}
+@@ -716,6 +763,17 @@
+   for(const p of Object.values(R.places))
+     for(const it of p.items) (R.itemIndex[it.n] ||= []).push({...it, place:p.id, pname:p.name});
+ 
++  // evolution.h gives each species its outgoing steps as "<method> → <target>".
++  // Index both directions so any member can rebuild its whole family.
++  R.evoTo={}; R.evoFrom={};
++  for(const [from,steps] of Object.entries(R.evo||{}))
++    for(const s of steps){
++      const i=s.lastIndexOf('→'); if(i<0) continue;
++      const to=s.slice(i+1).trim(), how=s.slice(0,i).trim();
++      (R.evoTo[from] ||= []).push({to,how});
++      R.evoFrom[to]=from;
++    }
++
+   R.tileIndex={};
+   for(const sc of R.screens){const ix={};for(const [x,y,s] of sc.tiles) ix[x+','+y]=s; R.tileIndex[sc.id]=ix;}
+   buildScreens(); document.getElementById('q').value='';
+@@ -731,9 +789,46 @@
+ 
+ /* ---------------- helpers ---------------- */
+ function sprite(n,size){const i=SPRITES.index[n];
+-  if(i===undefined) return `<span class="sp" style="--s:${size}px"></span>`;
++  if(i===undefined) return `<span class="sp q" style="--s:${size}px"></span>`;
+   const c=i%SPRITES.cols, r=Math.floor(i/SPRITES.cols);
+   return `<span class="sp" role="img" aria-label="${n}" style="--s:${size}px;background-position:calc(var(--s)*-${c}) calc(var(--s)*-${r})"></span>`;}
++function evoRoot(n){const seen=new Set();let c=n;
++  while(R.evoFrom[c]&&!seen.has(c)){seen.add(c);c=R.evoFrom[c]} return c}
++// Only the item the evolution actually consumes: "Use Fire Stone" and "Trade
++// holding Metal Coat". Matching any item name found anywhere in the text would
++// pull "Poke Ball" out of Shedinja's spare-slot condition.
++function evoItem(how){
++  const m=how.match(/^Use (.+)$/)||how.match(/holding ([^,]+)$/);
++  const n=m&&m[1].trim();
++  return n&&R.itemIndex[n]?n:'';
++}
++function evoWhere(n){
++  const areas=new Set((R.species[n]||[]).map(r=>r.area)).size;
++  if(areas) return [`${areas} area${areas===1?'':'s'} in the wild`,''];
++  if((D.specials[region]||{})[n]) return ['One-off encounter — open it for the details',' none'];
++  const pre=R.evoFrom[n];
++  if(pre) return [`Never appears wild — evolve ${/^[AEIOU]/.test(pre)?'an':'a'} ${pre}`,' none'];
++  return ['Not a wild encounter — starter, gift or trade',' none'];
++}
++function evoNode(n,cur,depth){
++  const [where,none]=evoWhere(n);
++  let h=`<div class="evorow${n===cur?' on':''}" style="--d:${depth}">
++    <button class="evomon" data-sp="${n}" style="${tint(n)}">${sprite(n,52)}
++      <span class="en"><b>${n}</b><span class="ew${none}">${where}</span></span></button></div>`;
++  for(const st of (R.evoTo[n]||[])){
++    const it=evoItem(st.how), spots=it?(R.itemIndex[it]||[]).length:0;
++    h+=`<div class="evostep" style="--d:${depth}"><span class="ea">↳</span><span class="eh">${st.how}</span>`
++      +(it&&spots?`<button class="eitem" data-item="${it}">${it} · ${spots} spot${spots===1?'':'s'} on the map</button>`:'')
++      +`</div>`+evoNode(st.to,cur,depth+1);
++  }
++  return h;
++}
++function evoFamily(cur){
++  const root=evoRoot(cur), lone=root===cur&&!(R.evoTo[cur]||[]).length;
++  return `<div class="sec"><div class="sechd"><h3>Evolution line</h3></div>
++    ${lone?'<div class="mut" style="font-size:13px">Does not evolve — this is the whole family.</div>'
++          :`<div class="evo">${evoNode(root,cur,0)}</div>`}</div>`;
++}
+ function types(n){return D.types[n]||[]}
+ function tcol(n){return TC[types(n)[0]]||TC.Mystery}
+ function badges(n){return `<span class="tys">${types(n).map(t=>{const c=TC[t]||TC.Mystery;
+@@ -1180,7 +1275,7 @@
+   } else if(dTab==='items'){
+     body=nItems?`<div class="sec"><div class="grid">${p.items.map(i=>
+       `<div class="itm" data-item="${i.n}"><span class="ico ${i.k}">${i.k==='hidden'?'◆':'●'}</span>
+-       <div><div class="nm">${i.n}</div><div class="sub">${i.k==='hidden'?'Hidden — needs the Itemfinder':'On the ground'} · ${i.m} (${i.x}, ${i.y})</div></div></div>`).join('')}</div>
++       <div><div class="nm">${i.n}</div><div class="sub">${i.in?'<b>'+i.in+'</b> · ':''}${i.k==='hidden'?'Hidden — needs the Itemfinder':'On the ground'} · ${i.m} (${i.x}, ${i.y})</div></div></div>`).join('')}</div>
+       <div class="mut" style="font-size:12px;margin-top:12px">◆ hidden items are invisible — stand on the tile and use the Itemfinder. Coordinates are the game's own tile grid for that map.</div></div>`
+       :'<div class="empty">No items here.</div>';
+   } else {
+@@ -1231,7 +1326,7 @@
+     ['Wild held item', held||'None'],
+     ['Gender', typeof info.gender==='number'?(info.gender===0?'Male only':info.gender===100?'Female only':`${100-info.gender}% M / ${info.gender}% F`):(info.gender||'—')],
+     ['Egg groups', (info.egg||[]).join(' · ')||'—'],
+-    ['Evolution', evo.length?evo.join('<br>'):'Does not evolve'],
++    ['Evolves', evo.length?evo.length+' way'+(evo.length===1?'':'s')+' — see below':'Does not evolve'],
+   ];
+   document.getElementById('detail').innerHTML=`
+     <div class="dhd" style="display:flex;gap:18px;align-items:center">${sprite(name,132)}
+@@ -1246,6 +1341,7 @@
+       ${STATS.map(([k,l])=>`<div class="statrow"><span class="k">${l}</span>
+         <span class="b"><i style="width:${Math.min(100,(info[k]||0)/180*100)}%"></i></span>
+         <span class="v">${info[k]??'—'}</span></div>`).join('')}</div></div>
++    ${evoFamily(name)}
+     ${rows.length?`<div class="sec"><div class="sechd"><h3>Where to find it</h3></div><div class="mons">
+       ${rows.map(r=>`<div class="mon" data-place-area="${r.area}" style="${tint(name)}">
+         <div class="who"><b>${r.area_name}</b><span class="mut" style="font-size:12px">${MLABEL[r.method]}</span></div>
+@@ -1265,7 +1361,8 @@
+       · ${rows.filter(r=>r.k==='hidden').length} hidden</div></div>
+     <div class="sec"><div class="grid">${rows.map(r=>
+       `<div class="itm" data-place="${r.place}"><span class="ico ${r.k}">${r.k==='hidden'?'◆':'●'}</span>
+-       <div><div class="nm">${r.pname}</div><div class="sub">${r.k==='hidden'?'Hidden':'On the ground'} · ${r.m} (${r.x}, ${r.y})</div></div></div>`).join('')}</div></div>`;
++       <div><div class="nm">${r.pname}${r.in?' <span class="mut">· '+r.in+'</span>':''}</div>
++        <div class="sub">${r.k==='hidden'?'Hidden':'On the ground'} · ${r.m} (${r.x}, ${r.y})</div></div></div>`).join('')}</div></div>`;
+   wire(); drawBanner(); drawMap(); renderList();
+   writeHash();
+   stage.scrollIntoView({behavior:'smooth',block:'center'});
