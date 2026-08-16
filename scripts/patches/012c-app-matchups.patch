@@ -1,0 +1,172 @@
+--- a/build_app.py
++++ b/build_app.py
+@@ -1766,11 +1996,11 @@
+     else if(sortBy==='common') names.sort((a,b)=>rarityOf(b).best-rarityOf(a).best||a.localeCompare(b));
+     else if(sortBy==='spread') names.sort((a,b)=>rarityOf(b).n-rarityOf(a).n||a.localeCompare(b));
+     else names.sort((a,b)=>a.localeCompare(b));
+-    html=names.map(n=>{const r=rarityOf(n);
+-      return `<button class="row" data-sp="${n}" style="${tint(n)}" ${selSpecies===n?'aria-current="true"':''}>
+-        ${sprite(n,40)}<span class="nm">${n}<span style="display:block;margin-top:2px">${rarityChip(n)}</span></span>
+-        <small>${r.n?`${r.best%1?r.best.toFixed(1):r.best}% · ${r.n} loc`:'special'}</small></button>`}).join('')
+-      ||'<div class="empty">Nothing matches.</div>';
++    html=names.length?`<div class="dexgrid">${names.map(n=>{const r=rarityOf(n);
++      return dexCard(n, r.n?`${r.best%1?r.best.toFixed(1):r.best}% · ${r.n} spot${r.n===1?'':'s'}`
++                        :(R.species[n]||[]).some(x=>x.k)?GOTNAME[(R.species[n].find(x=>x.k)||{}).k]||'Special':'Special')
++      }).join('')}</div>`
++      :'<div class="empty">Nothing matches.</div>';
+   } else {
+     const names=Object.keys(R.itemIndex).filter(n=>!q||n.toLowerCase().includes(q));
+     if(sortBy==='count') names.sort((a,b)=>R.itemIndex[b].length-R.itemIndex[a].length||a.localeCompare(b));
+@@ -1791,9 +2021,25 @@
+   el.querySelectorAll('[data-sp]').forEach(b=>b.onclick=()=>{selectSpecies(b.dataset.sp);jump()});
+   el.querySelectorAll('[data-item]').forEach(b=>b.onclick=()=>{selectItem(b.dataset.item);jump()});
+ }
++// On a phone the bottom bar is the whole navigation: three of its tabs are
++// sections of the atlas, two are separate views.
++function navTo(k){
++  if(k==='bosses') setView('bosses');
++  else if(k==='tips') setView('guide');
++  else { setView('atlas'); setTab(k==='map'?'places':k==='dex'?'mons':'items');
++         scrollTo({top:0,behavior:'smooth'}); }
++  drawNav();
++}
++function drawNav(){
++  const cur = view==='bosses'?'bosses' : view==='guide'?'tips'
++            : view==='here'?'map' : tab==='mons'?'dex' : tab==='items'?'items' : 'map';
++  document.querySelectorAll('#mobbar button').forEach(b=>
++    b.setAttribute('aria-selected', String(b.dataset.nav===cur)));
++}
+ function setTab(t){
+   tab=t;
+-  document.querySelectorAll('.tabs button, .mobbar button').forEach(b=>b.setAttribute('aria-selected',b.dataset.tab===t));
++  document.querySelectorAll('.tabs button').forEach(b=>b.setAttribute('aria-selected',b.dataset.tab===t));
++  drawNav();
+   const qi=document.getElementById('q');
+   qi.placeholder=t==='places'?'Search places…':t==='mons'?'Search Pokémon…':'Search items…';
+   qi.value=''; query=''; sortBy='name'; drawSort(); drawChips(); renderList();
+@@ -1869,11 +2115,34 @@
+       <div class="gcards">${sec.items.map(i=>`<div class="gcard">
+         <span class="sev ${i.sev}">${({gone:'Gone for good',delayed:'Delayed, not lost',oneuse:'Single use',timed:'Clock-gated'})[i.sev]}</span>
+         <h4>${i.t}</h4><p>${i.b}</p><div class="where">📍 ${i.w}</div></div>`).join('')}</div></div></section>`).join('')}
++    ${typeChartSection()}
+     ${teamSection()}
+     ${hmSection()}`;
+   const el=document.getElementById('guidebody');
+   el.querySelectorAll('[data-sp]').forEach(b=>b.onclick=()=>{setView('atlas');setTab('mons');selectSpecies(b.dataset.sp)});
+ }
++// The whole 17x17 grid, straight from the game's own table. Attacking type down
++// the side, defending type across the top, so a row reads "what I hit".
++function typeChartSection(){
++  if(!R.tc) return '';
++  const T=R.tc.names;
++  return `<section class="card"><div class="gsec"><h3>Every type matchup</h3>
++    <p class="mut" style="margin:0 0 12px;max-width:70ch;font-size:13.5px">The attacking type runs down the
++    left, the defending type across the top — so read a row to see what that type hits. Blank is normal
++    damage. A Pokémon with two types multiplies both columns, which is where ×4 and ×¼ come from.</p>
++    <div class="tcwrap"><table class="tcgrid"><thead><tr><th></th>
++      ${T.map(d=>`<th>${d}</th>`).join('')}</tr></thead><tbody>
++      ${T.map(a=>`<tr><th>${a}</th>${T.map(d=>{
++        const v=(R.tc.chart[a]||{})[d], m=v===undefined?10:v;
++        return `<td class="v${m}" title="${a} → ${d}: ×${m/10}">${m===20?'2':m===5?'½':m===0?'0':''}</td>`
++      }).join('')}</tr>`).join('')}
++    </tbody></table></div>
++    <div class="tclegend"><span><i style="background:#e8348a"></i>Super effective ×2</span>
++      <span><i style="background:#1587e8"></i>Not very effective ×½</span>
++      <span><i style="background:#33415a"></i>No effect</span>
++      <span><i style="background:var(--s2)"></i>Normal ×1</span></div>
++    </div></section>`;
++}
+ function hmSection(){
+   const {hms,rows}=hmTable();
+   const top=rows.filter(r=>r.n>=3).slice(0,14);
+@@ -1947,6 +2216,55 @@
+   d.querySelectorAll('[data-place]').forEach(x=>x.onclick=()=>{
+     setView('atlas');setTab('places');selectPlace(R.places[x.dataset.place])});
+ }
++/* How to prepare for one fight: which attacking type lands on the most of the
++   party, which type the party shrugs off, and who in this game brings it. */
++// The lowest level this Pokemon ever turns up at, which stands in for "could I
++// have it by now". Gifts and trades come with no level, so they count as early.
++function earliestLv(n){
++  const rs=R.species[n]||[]; if(!rs.length) return 99;
++  return Math.min(...rs.map(r=>r.min||0));
++}
++function bossPlan(party,lv){
++  if(!R.tc||!party.length) return null;
++  const avg=t=>party.reduce((s,m)=>s+vsMon(t,m.s),0)/party.length;
++  const scored=R.tc.names.map(t=>({t,v:avg(t),
++    hits:party.filter(m=>vsMon(t,m.s)>1).length})).sort((a,b)=>b.v-a.v);
++  const bring=scored.filter(s=>s.v>1.15).slice(0,4);
++  const avoid=scored.filter(s=>s.v<0.8).slice(-3).reverse();
++  const mons=[];
++  for(const n of Object.keys(R.species)){
++    const m=R.mon[n]; if(!m||m.hp===undefined||isSetPiece(n)) continue;
++    if(party.some(p=>p.s===n)) continue;
++    // Recommending Gyarados for the first gym is useless: nothing shows up in
++    // the wild much above the level of the fight you are walking into.
++    if(lv&&earliestLv(n)>lv+4) continue;
++    const cov=party.reduce((s,p)=>s+Math.max(...types(n).map(t=>vsTypes(t,types(p.s)))),0)/party.length;
++    if(cov<=1.15) continue;
++    const back=party.reduce((s,p)=>s+Math.max(...types(p.s).map(t=>vsMon(t,n))),0)/party.length;
++    const off=Math.max(statPct(R.rank.atk,m.atk||0),statPct(R.rank.spa,m.spa||0));
++    mons.push({n,cov,back,score:cov*100+off/2-(back>1.3?35:0)});
++  }
++  mons.sort((a,b)=>b.score-a.score||a.n.localeCompare(b.n));
++  return {bring,avoid,mons:mons.slice(0,4)};
++}
++function planBlock(party,lv){
++  const p=bossPlan(party,lv); if(!p||(!p.bring.length&&!p.mons.length)) return '';
++  return `<details class="plan"><summary>How to beat it</summary>
++    <div class="planbody">
++      ${p.bring.length?`<div class="mrow m2"><span class="mlab">Bring</span><span class="mlist">${
++        p.bring.map(s=>tyPill(s.t,` <b style="font-weight:800">${s.hits}/${party.length}</b>`)).join('')}</span></div>`:''}
++      ${p.avoid.length?`<div class="mrow mh"><span class="mlab">Avoid</span><span class="mlist">${
++        p.avoid.map(s=>tyPill(s.t)).join('')}</span></div>`:''}
++      ${p.mons.length?`<div class="cnts" style="margin-top:9px">${p.mons.map(c=>
++        `<button class="cnt" data-sp="${c.n}" style="${tint(c.n)}">${sprite(c.n,44)}
++          <span class="cmain"><b>${c.n}</b><span class="ctags">
++            <span class="cx">×${c.cov.toFixed(2)} average</span>
++            ${c.back>1.3?'<span class="cback">✕ takes extra back</span>':''}</span></span></button>`).join('')}</div>`:''}
++      <div class="mut" style="font-size:11px;margin-top:9px">The number on a type is how many of the party it
++        hits for extra damage. The Pokémon below are ones you can get in ${R.game}, ranked on how well their own
++        types cover the whole party — not on a moveset, so check what they actually learn.</div>
++    </div></details>`;
++}
+ function bossCard(r){
+   const where=r.place?`<button class="bwhere" data-place="${r.place.id}">📍 ${r.name}</button>`
+                      :`<span class="bwhere">📍 ${r.name}</span>`;
+@@ -1956,6 +2274,7 @@
+       <div class="bhd"><span class="blv">Lv ${r.lv}</span>
+         <b>${r.e.s}</b><span class="bcls" style="background:${c};color:${inkOn(c)}">Legendary</span></div>
+       <div class="party"><div class="pm" data-sp="${r.e.s}">${sprite(r.e.s,48)}<span>${r.e.s}</span><i>Lv${r.lv}</i></div></div>
++      ${planBlock([{s:r.e.s}],r.lv)}
+       ${where}</div>`;
+   }
+   const b=r.b;
+@@ -1967,6 +2286,7 @@
+       ${sprite(m.s,48)}<span>${m.s}</span><i>Lv${m.l}</i>
+       ${m.i?`<em>${m.i}</em>`:''}
+       ${(m.m||[]).filter(x=>x&&x!=='None').length?`<u>${m.m.filter(x=>x&&x!=='None').join(' · ')}</u>`:''}</div>`).join('')}</div>
++    ${planBlock(b.p,r.lv)}
+     ${where}</div>`;
+ }
+ 
+@@ -2177,7 +2497,7 @@
+   document.getElementById('guideview').style.display=v==='guide'?'':'none';
+   document.getElementById('bossview').style.display=v==='bosses'?'':'none';
+   if(v==='bosses') drawBosses();
+-  document.getElementById('mobbar').style.display = v==='atlas' ? '' : 'none';
++  drawNav();
+   if(v==='here'){
+     if(!herePlace&&selPlace){herePlace=selPlace;document.getElementById('hereq').value=selPlace.name;}
+     drawHereSuggest(); drawHere();
+@@ -2190,8 +2510,7 @@
+ /* ---------------- wiring ---------------- */
+ document.getElementById('q').oninput=e=>{query=e.target.value;renderList()};
+ document.querySelector('.tabs').onclick=e=>{const b=e.target.closest('[data-tab]');if(b)setTab(b.dataset.tab)};
+-document.getElementById('mobbar').onclick=e=>{const b=e.target.closest('[data-tab]');
+-  if(b){setTab(b.dataset.tab);document.getElementById('q').scrollIntoView({behavior:'smooth',block:'start'})}};
++document.getElementById('mobbar').onclick=e=>{const b=e.target.closest('[data-nav]');if(b) navTo(b.dataset.nav)};
+ document.getElementById('modes').onclick=e=>{const b=e.target.closest('[data-mode]');if(!b)return;
+   mode=b.dataset.mode;
+   document.querySelectorAll('#modes button').forEach(x=>x.setAttribute('aria-pressed',x===b)); drawMap()};
