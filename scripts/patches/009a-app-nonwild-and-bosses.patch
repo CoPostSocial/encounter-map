@@ -1,0 +1,179 @@
+--- a/build_app.py
++++ b/build_app.py
+@@ -68,6 +68,17 @@
+         return out
+     p_items, p_trn = collect(EX[k]['items']), collect(EX[k]['tsec'])
+ 
++    # Rayquaza is at MAPSEC_SKY_PILLAR and Mewtwo at MAPSEC_CERULEAN_CAVE --
++    # both interiors, neither a place with tiles of its own. Route them the same
++    # way as items, or the map lights up nothing when you select them.
++    scripted = {}
++    for sid, rows in EX[k]['scripted'].items():
++        # Marine Cave and Terra Cave move around with the weather event and have
++        # no fixed spot on the map screen. Keep them under their own section
++        # rather than dropping Kyogre out of the atlas entirely.
++        h = sid if sid == 'TRADES' else (host.get(sid) or sid)
++        scripted.setdefault(h, []).extend(rows)
++
+     places = {}
+     for pid, pl in reg['places'].items():
+         pl = dict(pl)
+@@ -81,6 +92,7 @@
+         'places': places, 'areas': reg['areas'], 'home': HOME[k],
+         'mon': EX[k]['species'], 'evo': EX[k]['evos'], 'trainers': EX[k]['trainers'],
+         'moves': EX[k]['moves'], 'learn': EX[k]['learn'], 'tmhm': EX[k]['tmhm'],
++        'scripted': scripted, 'bosses': EX[k]['bosses'],
+     }
+ 
+ TA = sum(len(r['areas']) for r in R['regions'].values())
+@@ -457,6 +469,39 @@
+ .mvmore[open] summary::before{content:'▾ '}
+ .mvmore[open] summary{border-bottom:1px solid var(--line)}
+ .mvmore .mvs{padding:10px}
++/* bosses */
++.bosslist{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px}
++.boss{background:var(--s2);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
++.boss.legend{border-color:var(--line-2)}
++.bhd{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:9px}
++.bhd b{font-size:15.5px}
++.blv{font-size:11px;font-weight:800;background:var(--ink);color:var(--s1);border-radius:999px;padding:3px 9px;
++  font-variant-numeric:tabular-nums}
++.bcls{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;
++  background:var(--s3);color:var(--ink2);border-radius:999px;padding:3px 9px}
++.boss .party{display:flex;flex-wrap:wrap;gap:7px}
++.boss .pm{flex:1 1 128px;min-width:0;background:var(--s1);border:1px solid var(--line);border-radius:11px;
++  padding:8px;display:flex;flex-direction:column;align-items:center;text-align:center;cursor:pointer;gap:1px}
++.boss .pm:hover{border-color:var(--acc)}
++.boss .pm span{font-size:11.5px;font-weight:800}
++.boss .pm i{font-size:10.5px;font-style:normal;color:var(--ink3);font-weight:700}
++.boss .pm em{font-size:10px;font-style:normal;color:var(--acc2);font-weight:800}
++.boss .pm u{font-size:9.5px;text-decoration:none;color:var(--ink3);line-height:1.35;margin-top:3px}
++.hmlist{display:flex;flex-direction:column;gap:8px}
++.hmrow{display:flex;align-items:center;gap:12px;padding:9px 13px;border-radius:12px;
++  border:1px solid var(--line);cursor:pointer}
++.hmrow:hover{border-color:var(--acc)}
++.hmmain{flex:1;min-width:0}
++.hmn{font-size:14px;font-weight:800;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
++.hmtags{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px}
++.hmtag{font-size:10.5px;font-weight:800;background:var(--s1);border:1px solid var(--line-2);
++  border-radius:999px;padding:2px 8px;color:var(--ink2)}
++.hmn2{text-align:right;flex:none}
++.hmn2 b{display:block;font-size:19px;font-weight:800;color:var(--acc2)}
++.hmn2 span{font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink3);font-weight:800}
++.bwhere{display:inline-block;margin-top:10px;font-size:11.5px;font-weight:700;color:var(--ink2);
++  background:none;border:0;padding:0;cursor:pointer}
++button.bwhere:hover{color:var(--acc2)}
+ .itm{display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:11px;background:var(--s2);
+   border:1px solid var(--line);cursor:pointer}
+ .itm:hover{border-color:var(--acc)}
+@@ -643,6 +688,8 @@
+   .eitem{padding:11px 15px;font-size:12.5px;min-height:44px}
+   .evostep{gap:10px}
+   .msrc{padding:10px 14px;font-size:11.5px;min-height:44px;display:inline-flex;align-items:center}
++  .bwhere{min-height:44px;display:inline-flex;align-items:center;font-size:12.5px}
++  .hmrow{padding:12px 13px}
+   .mvmore summary{padding:14px 15px;font-size:13px}
+   .mobbar button{padding:13px 4px}
+ }
+@@ -660,6 +707,7 @@
+   <div class="seg" id="viewswitch">
+     <button data-view="atlas" aria-pressed="true">Atlas</button>
+     <button data-view="here" aria-pressed="false">I'm here</button>
++    <button data-view="bosses" aria-pressed="false">Bosses</button>
+     <button data-view="guide" aria-pressed="false">Missables</button>
+   </div>
+ </header>
+@@ -717,6 +765,10 @@
+   </main>
+ </div>
+ 
++<div class="wrap" id="bossview" style="display:none;grid-template-columns:1fr">
++  <main><div class="guide" id="bossbody"></div></main>
++</div>
++
+ <div class="wrap" id="guideview" style="display:none;grid-template-columns:1fr">
+   <main><div class="guide" id="guidebody"></div></main>
+ </div>
+@@ -750,6 +802,13 @@
+   Bug:'#A3BA1E',Rock:'#BFA83E',Ghost:'#7A5DA8',Dragon:'#7B45FA',Dark:'#7C6350',Steel:'#AFB3CC',
+   Fairy:'#DE8AB5',Mystery:'#68A090'};
+ const STATS = [['hp','HP'],['atk','Atk'],['def','Def'],['spa','SpA'],['spd','SpD'],['spe','Spe']];
++const GOTICO={starter:'★',gift:'🎁',static:'⚔',egg:'◓',trade:'⇄'};
++const GOTNAME={starter:'Starter',gift:'Gift',static:'Standing on the map',egg:'Egg',trade:'In-game trade'};
++const GOTNOTE={starter:'You pick one of the three.',
++  gift:'Handed to you — no catching involved.',
++  static:'One battle. Knock it out and it is gone until you beat the League.',
++  egg:'Hatches from an egg someone gives you.',
++  trade:'Trade one of yours for it.'};
+ const I = {
+   grass:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 22c0-7 3-12 8-15-6 .5-9 4-10 8-1-4-3-6-7-7 3 3 5 7 5 14z"/></svg>',
+   surf:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M2 13c3-3 5 3 8 0s5 3 8 0v4c-3 3-5-3-8 0s-5-3-8 0zm0-6c3-3 5 3 8 0s5 3 8 0v4c-3 3-5-3-8 0s-5-3-8 0z"/></svg>',
+@@ -790,6 +849,9 @@
+ function loadRegion(key){
+   region=key; R=D.regions[key]; SPRITES=D.sprites[key]; screenId=R.screens[0].id;
+   selPlace=selSpecies=selItem=null; typeFilter=null; query=''; dTab='enc';
++  // "I'm here" remembers a place; carrying a Hoenn one into Kanto used to throw
++  // the moment the view tried to read areas that only exist in the other game.
++  herePlace=null; const hq=document.getElementById('hereq'); if(hq) hq.value='';
+   document.documentElement.dataset.region=key;
+   document.getElementById('tagline').textContent=`Pokémon ${R.game} · ${R.name}`;
+   document.getElementById('logo').textContent=R.name[0];
+@@ -805,6 +867,20 @@
+         (R.species[m.species] ||= []).push({area:aid,area_name:a.name,method:meth,pct:m.pct,min:m.min,max:m.max});
+   for(const k in R.species) R.species[k].sort((x,y)=>y.pct-x.pct);
+   for(const k in (D.specials[key]||{})) R.species[k] ||= [];
++  // Starters, gifts, fossils, the static legendaries and the in-game trades sit
++  // in no encounter table at all, so without this the atlas only knows about
++  // Pokemon you meet in grass — no Treecko, no Rayquaza, no Mewtwo.
++  R.trades=[];
++  for(const [sec,list] of Object.entries(R.scripted||{})){
++    if(sec==='TRADES'){ R.trades=list; continue; }
++    const pl=R.places[sec];
++    for(const e of list)
++      (R.species[e.s] ||= []).push({area:sec, area_name:pl?pl.name:(e.m||sec), method:'grass',
++        pct:100, min:e.l||0, max:e.l||0, k:e.k, where:e.m});
++  }
++  for(const t of R.trades)
++    (R.species[t.s] ||= []).push({area:'', area_name:'In-game trade', method:'grass',
++      pct:100, min:0, max:0, k:'trade', where:'Give a '+t.for});
+   R.species=Object.fromEntries(Object.entries(R.species).sort((a,b)=>a[0].localeCompare(b[0])));
+ 
+   R.itemIndex={};
+@@ -1054,7 +1130,7 @@
+ function primary(a){return a.methods.grass?'grass':a.methods.surf?'surf':a.methods.rock_smash?'rock_smash':Object.keys(a.methods)[0]}
+ function pStats(p){const ids=pAreas(p); if(!ids.length) return null;
+   let top=null,lo=99,hi=0,s=0,w=0; const seen=new Set();
+-  for(const id of ids){const a=R.areas[id],k=primary(a); if(!k) continue;
++  for(const id of ids){const a=R.areas[id]; if(!a) continue; const k=primary(a); if(!k) continue;
+     for(const m of a.methods[k].mons){seen.add(m.species);lo=Math.min(lo,m.min);hi=Math.max(hi,m.max);
+       s+=(m.min+m.max)/2*m.pct;w+=m.pct; if(!top||m.pct>top.pct) top=m;}}
+   return w?{top,lo,hi,mid:s/w,n:seen.size}:null}
+@@ -1104,7 +1180,7 @@
+   const isItemHit=!!selItem;
+   const st={},kd={},hp={},maxItems=Math.max(1,...Object.values(R.places).map(p=>p.items.length));
+   for(const id in R.places){const p=R.places[id]; st[id]=pStats(p); kd[id]=kind(p);
+-    if(hits) hp[id]=isItemHit?hits.has(id):pAreas(p).some(a=>hits.has(a));}
++    if(hits) hp[id]=isItemHit?hits.has(id):(hits.has(id)||pAreas(p).some(a=>hits.has(a)));}
+   let html='';
+   for(const [x,y,sec] of sc.tiles){
+     const p=R.places[sec]; let c='tile ';
+@@ -1498,7 +1574,8 @@
+ }
+ function selectSpecies(name){
+   selSpecies=name; selItem=null;
+-  const rows=R.species[name]||[], best=rows[0], nA=new Set(rows.map(r=>r.area)).size;
++  const allrows=R.species[name]||[], rows=allrows.filter(r=>!r.k), got=allrows.filter(r=>r.k);
++  const best=rows[0], nA=new Set(rows.map(r=>r.area)).size;
+   const info=R.mon[name]||{}, evo=(R.evo[name]||[]);
+   const sp=(D.specials[region]||{})[name];
+   const bst=STATS.reduce((s,[k])=>s+(info[k]||0),0), rl=role(name);
+@@ -1515,7 +1592,8 @@
+     <div class="dhd" style="display:flex;gap:18px;align-items:center">${sprite(name,132)}
+       <div><h2>${name}</h2><div style="margin-top:7px">${badges(name)} ${rarityChip(name)}</div>
+       <div class="dmeta">${rows.length?`${rows.length} slot${rows.length===1?'':'s'} across ${nA} area${nA===1?'':'s'}`
+-        +(best?` · best odds ${best.pct}% at ${best.area_name}`:''):'Not in any standard encounter table'}</div></div></div>
++        +(best?` · best odds ${best.pct}% at ${best.area_name}`:'')
++        :got.length?'Not a wild encounter — see below':'Not in any standard encounter table'}</div></div></div>
+     ${sp?`<div class="note">${sp}</div>`:''}
+     <div class="sec"><div class="grid">
+       ${facts.map(([k,v])=>`<div class="tile2"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('')}
