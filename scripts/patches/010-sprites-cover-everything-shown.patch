@@ -1,0 +1,35 @@
+--- a/build_sprites.py
++++ b/build_sprites.py
+@@ -15,7 +15,7 @@
+     n = int(ls[2])
+     return [tuple(int(v) for v in ls[3 + i].split()) for i in range(n)]
+ 
+-SPECIAL = {'unown': 'unown/a'}
++SPECIAL = {'unown': 'unown/a', 'castform': 'castform/normal'}
+ def load_sprite(repo, name):
+     f = folder(name)
+     for cand in (f, SPECIAL.get(f, f)):
+@@ -62,9 +62,22 @@
+                 stack.append(nxt)
+     return fam
+ 
++def seed(rk):
++    """Everything the atlas can put on screen for this game.
++
++    Wild encounters are only part of it: starters, gifts, fossils, the static
++    legendaries and every Pokemon a gym leader or rival brings also need a
++    sprite, or they render as an empty circle."""
++    got = set(data['regions'][rk]['species']) | set(EXTRA[rk])
++    for rows in extras[rk]['scripted'].values():
++        got |= {e['s'] for e in rows}
++    for b in extras[rk]['bosses']:
++        got |= {m['s'] for m in b['p']}
++    return got
++
+ out = {}
+ for rk, repo in REPOS.items():
+-    names = sorted(family_closure(rk, set(data['regions'][rk]['species'])) | set(EXTRA[rk]))
++    names = sorted(family_closure(rk, seed(rk)))
+     sprites, missing = {}, []
+     for n in names:
+         s = load_sprite(repo, n)
