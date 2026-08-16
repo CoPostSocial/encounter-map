@@ -1,0 +1,52 @@
+--- a/build_regions.py
++++ b/build_regions.py
+@@ -124,6 +124,9 @@
+             {'dir': c['direction'], 'name': pretty(c['map'], out[c['map']]['name'])}
+             for c in (v['raw'].get('connections') or [])
+             if c.get('direction') in ('up','down','left','right') and c['map'] in out]
++        # doors and stairs, used to work out which town a building belongs to
++        v['warps'] = [w['dest_map'] for w in (v['raw'].get('warp_events') or [])
++                      if w.get('dest_map') in out]
+         del v['raw']
+     return out
+ 
+@@ -222,8 +225,38 @@
+     for k in rev:
+         rev[k].sort(key=lambda e: -e['pct'])
+ 
++    # Where every other map section sits. Only sections with wild encounters
++    # become "inside" entries above, so Silph Co, Rocket Hideout and the rest
++    # of the battle-and-loot-only interiors would otherwise have nowhere to
++    # hang their items and trainers.
++    sec_home = {}
++    for sid in secs:
++        if sid in places:
++            continue
++        h = OVERRIDE.get(sid) or host_for(sid)
++        if h and h in places:
++            sec_home[sid] = [h, nameof(sid)]
++
++    # Buildings carry a section with no coordinates of its own -- Silph Co sits
++    # at 0,0 on the map screen. Walk out through the doors instead: whatever
++    # town you step into a building from is the town it belongs to.
++    frontier = [(mid, m['mapsec']) for mid, m in maps.items() if m['mapsec'] in places]
++    seen = {mid for mid, _ in frontier}
++    while frontier:
++        nxt = []
++        for mid, host in frontier:
++            for dest in maps[mid]['warps']:
++                if dest in seen:
++                    continue
++                seen.add(dest)
++                sid = maps[dest]['mapsec']
++                if sid and sid not in places and sid not in sec_home:
++                    sec_home[sid] = [host, nameof(sid)]
++                nxt.append((dest, host))
++        frontier = nxt
++
+     return {'name': cfg['name'], 'game': cfg['game'], 'screens': screens,
+-            'places': places, 'areas': areas_by_id,
++            'places': places, 'areas': areas_by_id, 'sec_home': sec_home,
+             'species': {k: v for k, v in sorted(rev.items())},
+             'orphans': orphans}
+ 

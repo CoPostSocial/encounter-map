@@ -1,0 +1,19 @@
+--- a/build_extras.py
++++ b/build_extras.py
+@@ -160,8 +160,14 @@
+ def build_evos(repo):
+     src = open(os.path.join(repo, 'src/data/pokemon/evolution.h')).read()
+     out = {}
+-    for m in re.finditer(r'\[(SPECIES_\w+)\]\s*=\s*\{(.*?)\}\s*,\s*\n', src, re.S):
+-        name, body = species_name(m.group(1)), m.group(2)
++    # Each entry is [SPECIES_X] = {{EVO_..},{EVO_..},..}, with one inner brace
++    # per branch. Slice on the species keys rather than trying to brace-match:
++    # a non-greedy body stops at the first inner "}," and silently drops every
++    # branch after the first, which is how Eevee ended up with one evolution.
++    keys = list(re.finditer(r'\[(SPECIES_\w+)\]\s*=\s*\{', src))
++    for i, m in enumerate(keys):
++        end = keys[i + 1].start() if i + 1 < len(keys) else len(src)
++        name, body = species_name(m.group(1)), src[m.end():end]
+         steps = []
+         for e in re.finditer(r'\{\s*(EVO_\w+)\s*,\s*([\w]+)\s*,\s*(SPECIES_\w+)', body):
+             kind, val, target = e.group(1), e.group(2), species_name(e.group(3))

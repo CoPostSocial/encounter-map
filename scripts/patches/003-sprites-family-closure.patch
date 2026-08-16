@@ -1,0 +1,36 @@
+--- a/build_sprites.py
++++ b/build_sprites.py
+@@ -39,9 +39,32 @@
+             return rgba
+     return None
+ 
++extras = json.load(open('/home/claude/extras.json'))
++
++def family_closure(rk, base):
++    """Every species reachable through evolution from something catchable.
++
++    The atlas draws whole evolution lines, and most later stages -- Flareon,
++    Beautifly, Alakazam -- never appear in a wild encounter table, so basing
++    the sheet on encounterable species alone leaves them with no sprite."""
++    up, down = {}, {}
++    for src, steps in extras[rk]['evos'].items():
++        for s in steps:
++            dst = s.rsplit('→', 1)[-1].strip()
++            down.setdefault(src, []).append(dst)
++            up[dst] = src
++    fam, stack = set(base), list(base)
++    while stack:
++        n = stack.pop()
++        for nxt in down.get(n, []) + ([up[n]] if n in up else []):
++            if nxt not in fam:
++                fam.add(nxt)
++                stack.append(nxt)
++    return fam
++
+ out = {}
+ for rk, repo in REPOS.items():
+-    names = sorted(set(data['regions'][rk]['species']) | set(EXTRA[rk]))
++    names = sorted(family_closure(rk, set(data['regions'][rk]['species'])) | set(EXTRA[rk]))
+     sprites, missing = {}, []
+     for n in names:
+         s = load_sprite(repo, n)
