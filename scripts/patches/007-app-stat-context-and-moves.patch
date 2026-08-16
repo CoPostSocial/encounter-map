@@ -1,0 +1,267 @@
+--- a/build_app.py
++++ b/build_app.py
+@@ -80,6 +80,7 @@
+         'name': reg['name'], 'game': reg['game'], 'screens': screens,
+         'places': places, 'areas': reg['areas'], 'home': HOME[k],
+         'mon': EX[k]['species'], 'evo': EX[k]['evos'], 'trainers': EX[k]['trainers'],
++        'moves': EX[k]['moves'], 'learn': EX[k]['learn'], 'tmhm': EX[k]['tmhm'],
+     }
+ 
+ TA = sum(len(r['areas']) for r in R['regions'].values())
+@@ -154,14 +155,18 @@
+ /* ---------- layout ---------- */
+ .wrap{position:relative;z-index:1;display:grid;grid-template-columns:330px minmax(0,1fr);gap:16px;
+   padding:16px 20px 64px;align-items:start}
+-@media(max-width:1060px){.wrap{grid-template-columns:1fr}}
++@media(max-width:1060px){.wrap{grid-template-columns:minmax(0,1fr)}}
+ /* the map is the point of the app — give it the room */
+ #mapcard{position:relative;z-index:2;background:var(--s1)}
+ .mapstage{min-height:66vh;display:flex;align-items:center;justify-content:center}
+ #mapcard.inside .mapstage,#mapcard.inside .legend:not(#insidewrap .legend),
+ #mapcard.inside #zoomctl,#mapcard.inside #modes{display:none}
+ @media(max-width:1060px){.mapstage{min-height:0}}
+-.card{background:var(--s1);border:2px solid var(--line);border-radius:var(--r);box-shadow:var(--sh)}
++/* min-width:0 or the map's own width feeds back into the width of the column
++   that is supposed to be constraining it, and the page lays out ~1100px wide
++   on a 390px phone. */
++.card{background:var(--s1);border:2px solid var(--line);border-radius:var(--r);box-shadow:var(--sh);
++  min-width:0}
+ aside{position:sticky;top:88px}
+ main{display:grid;gap:18px;min-width:0}
+ .chd{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+@@ -413,6 +418,45 @@
+ .statrow .b{flex:1;height:8px;border-radius:999px;background:var(--s3);overflow:hidden}
+ .statrow .b i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--acc2),var(--acc))}
+ .statrow .v{width:32px;text-align:right;font-weight:800;font-variant-numeric:tabular-nums;font-size:13px}
++.statrow .pc2{width:34px;text-align:right;font-size:11px;font-weight:700;color:var(--ink3);
++  font-variant-numeric:tabular-nums}
++/* stat bars are percentile against the whole Pokedex, so colour them by tier */
++.statrow .b.t5 i{background:linear-gradient(90deg,#00a468,#22d68a)}
++.statrow .b.t4 i{background:linear-gradient(90deg,#1587e8,#4fb3ff)}
++.statrow .b.t3 i{background:linear-gradient(90deg,#7a52ea,#a98cff)}
++.statrow .b.t2 i{background:linear-gradient(90deg,#f0980d,#ffc247)}
++.statrow .b.t1 i{background:linear-gradient(90deg,#e8348a,#ff7ab3)}
++.rolechip{display:inline-flex;align-items:center;gap:7px;margin:9px 0 3px;padding:6px 13px;
++  border-radius:999px;font-size:12.5px;font-weight:800;background:var(--accSoft);color:var(--acc2);
++  border:1px solid color-mix(in srgb,var(--acc) 34%,transparent)}
++/* moves */
++.mvs{display:flex;flex-direction:column;gap:7px}
++.mvrow{display:flex;align-items:flex-start;gap:11px;padding:10px 12px;border-radius:12px;
++  background:var(--s2);border:1px solid var(--line)}
++.mvrow .ty{margin-top:2px;flex:none}
++.mvmain{flex:1;min-width:0}
++.mvn{font-size:14px;font-weight:800;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
++.mvpp{font-size:11px;font-weight:600;color:var(--ink3)}
++.mvwhy{font-size:11.5px;color:var(--ink2);margin-top:2px}
++.mvcav{font-size:11px;color:var(--ink3);margin-top:2px;font-style:italic}
++.mvsrc{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
++.msrc{font-size:10.5px;font-weight:800;padding:3px 9px;border-radius:999px;
++  background:var(--s3);color:var(--ink2);border:1px solid var(--line)}
++.msrc.tm{background:var(--s1)}
++button.msrc.tm{cursor:pointer}
++button.msrc.tm:hover{border-color:var(--acc);color:var(--acc2)}
++.mvscore{text-align:right;flex:none;min-width:44px}
++.mvscore b{display:block;font-size:17px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--acc2)}
++.mvscore span{font-size:9.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--ink3);font-weight:800}
++.mvrow.util .mvscore{display:none}
++.mvmore{margin-top:10px;border:1px solid var(--line);border-radius:12px;overflow:hidden}
++.mvmore summary{cursor:pointer;padding:11px 14px;font-size:12.5px;font-weight:800;color:var(--ink2);
++  background:var(--s2);list-style:none}
++.mvmore summary::-webkit-details-marker{display:none}
++.mvmore summary::before{content:'▸ ';color:var(--ink3)}
++.mvmore[open] summary::before{content:'▾ '}
++.mvmore[open] summary{border-bottom:1px solid var(--line)}
++.mvmore .mvs{padding:10px}
+ .itm{display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:11px;background:var(--s2);
+   border:1px solid var(--line);cursor:pointer}
+ .itm:hover{border-color:var(--acc)}
+@@ -598,6 +642,8 @@
+   .chipmon{padding:8px 16px 8px 6px;min-height:44px}
+   .eitem{padding:11px 15px;font-size:12.5px;min-height:44px}
+   .evostep{gap:10px}
++  .msrc{padding:10px 14px;font-size:11.5px;min-height:44px;display:inline-flex;align-items:center}
++  .mvmore summary{padding:14px 15px;font-size:13px}
+   .mobbar button{padding:13px 4px}
+ }
+ </style>
+@@ -765,6 +811,13 @@
+   for(const p of Object.values(R.places))
+     for(const it of p.items) (R.itemIndex[it.n] ||= []).push({...it, place:p.id, pname:p.name});
+ 
++  // Every stat sorted once, so any species' stat can be turned into "better
++  // than N% of the Pokedex" with a binary search instead of a scan.
++  R.rank={};
++  const allmon=Object.values(R.mon).filter(m=>m&&m.hp!==undefined);
++  for(const [k] of STATS) R.rank[k]=allmon.map(m=>m[k]||0).sort((a,b)=>a-b);
++  R.rank.bst=allmon.map(m=>STATS.reduce((s,[k])=>s+(m[k]||0),0)).sort((a,b)=>a-b);
++
+   // evolution.h gives each species its outgoing steps as "<method> → <target>".
+   // Index both directions so any member can rebuild its whole family.
+   R.evoTo={}; R.evoFrom={};
+@@ -831,6 +884,134 @@
+     ${lone?'<div class="mut" style="font-size:13px">Does not evolve — this is the whole family.</div>'
+           :`<div class="evo">${evoNode(root,cur,0)}</div>`}</div>`;
+ }
++/* ---------------- stats in context ---------------- */
++// Share of the 386 Pokemon this value beats, ties counted at their midpoint.
++function statPct(sorted,v){
++  let lo=0,hi=sorted.length;
++  while(lo<hi){const mid=(lo+hi)>>1; if(sorted[mid]<v) lo=mid+1; else hi=mid;}
++  let up=lo; while(up<sorted.length&&sorted[up]===v) up++;
++  return Math.round((lo+up)/2/sorted.length*100);
++}
++const TIERS=[[92,'Elite','t5'],[75,'Strong','t4'],[55,'Above average','t3'],
++             [30,'Below average','t2'],[0,'Weak','t1']];
++function tier(p){return TIERS.find(t=>p>=t[0])}
++function role(n){
++  const m=R.mon[n]; if(!m||m.hp===undefined) return null;
++  const p={}; for(const [k] of STATS) p[k]=statPct(R.rank[k],m[k]||0);
++  const bulk=Math.round((p.hp+p.def+p.spd)/3), off=Math.max(p.atk,p.spa), gap=p.atk-p.spa;
++  let head;
++  if(off>=55) head=gap>12?'Physical attacker':gap<-12?'Special attacker':'Mixed attacker';
++  else if(bulk>=58) head='Defensive';
++  else head='All-rounder';
++  const tags=[];
++  if(p.spe>=80) tags.push('very fast'); else if(p.spe>=62) tags.push('fast');
++  else if(p.spe<=20) tags.push('very slow'); else if(p.spe<=38) tags.push('slow');
++  if(bulk>=76) tags.push('bulky'); else if(bulk<=24) tags.push('frail');
++  return {p,bulk,off,text:head+(tags.length?' · '+tags.join(', '):'')};
++}
++
++/* ---------------- moves ---------------- */
++// The 58 machine flags travel as a hex mask; unpack low bit first.
++function tmBits(hex){
++  const out=[];
++  for(let i=hex.length-1;i>=0;i--){const v=parseInt(hex[i],16);
++    for(let k=0;k<4;k++) out.push((v>>k)&1);}
++  return out;
++}
++// Gen III decides physical vs special by TYPE, not per move, so which stat a
++// move runs off is a property of its type. Rank by what it would actually hit
++// for: power, accuracy, same-type bonus, and the stat behind it.
++// Listed power lies about a lot of moves. Hyper Beam spends the next turn
++// recharging, Dream Eater only works on a sleeping foe, Fury Attack's 15 lands
++// two to five times. Each entry is [multiplier, power to use instead, why] and
++// the why is printed on the row, so nothing here is applied silently.
++const MEFF={
++  DREAM_EATER:[.3,0,'only vs sleeping foes'], RECHARGE:[.6,0,'recharge turn after'],
++  SOLAR_BEAM:[.6,0,'charges for a turn'], SEMI_INVULNERABLE:[.6,0,'takes two turns'],
++  SKY_ATTACK:[.6,0,'charges for a turn'], RAZOR_WIND:[.6,0,'charges for a turn'],
++  SKULL_BASH:[.6,0,'charges for a turn'], FOCUS_PUNCH:[.55,0,'fails if you are hit first'],
++  EXPLOSION:[.5,0,'the user faints'], RECOIL:[.85,0,'you take recoil'],
++  RECOIL_IF_MISS:[.85,0,'recoil if it misses'], DOUBLE_EDGE:[.85,0,'you take recoil'],
++  RAMPAGE:[.9,0,'locks you in, then confuses you'],
++  MULTI_HIT:[3,0,'hits 2-5 times'], DOUBLE_HIT:[2,0,'hits twice'],
++  TRIPLE_KICK:[2.4,0,'hits up to three times'], HIGH_CRITICAL:[1.15,0,'crits often'],
++  RETURN:[1,102,'power grows with friendship'],
++  FRUSTRATION:[1,102,'power grows as friendship drops'],
++  HIDDEN_POWER:[1,70,'type and power differ per Pokémon'],
++  FLAIL:[1,70,'stronger the lower your HP'],
++  LOW_KICK:[1,50,'stronger against heavy foes'],
++  MAGNITUDE:[1,71,'power varies from 10 to 150'],
++};
++function moveList(name){
++  const L=R.learn[name]; if(!L) return null;
++  const m=R.mon[name]||{}, ts=types(name), seen=new Map();
++  const add=(i,src)=>{
++    const mv=R.moves[i]; if(!mv) return;
++    const e=seen.get(i);
++    if(e){ if(!e.src.includes(src)) e.src.push(src); return; }
++    const ef=MEFF[mv[8]]||null;
++    const pw=(ef&&ef[1])?ef[1]:mv[2];
++    const stab=ts.includes(mv[1])?1.5:1;
++    const acc=mv[3]?mv[3]/100:1;                 // accuracy 0 means it can't miss
++    const stat=mv[6]?(m.atk||0):(m.spa||0);
++    seen.set(i,{i,mv,src:[src],stab,acc,stat,pw,ef,
++                score:Math.round(pw*acc*stab*(ef?ef[0]:1)*stat/100)});
++  };
++  const lv=L.l||[];
++  for(let i=0;i<lv.length;i+=2) add(lv[i+1],'Lv '+lv[i]);
++  if(L.t){const bits=tmBits(L.t);
++    R.tmhm.forEach((t,ix)=>{ if(bits[ix]) add(t[1],t[0]); });}
++  // Seismic Toss, Psywave and the one-hit-KO moves carry a placeholder power of
++  // 1 and do not scale off a stat at all, so they belong with the status moves.
++  const all=[...seen.values()], hits=r=>r.pw>1;
++  return {hit:all.filter(hits).sort((a,b)=>b.score-a.score||a.mv[0].localeCompare(b.mv[0])),
++          util:all.filter(r=>!hits(r)).sort((a,b)=>a.mv[0].localeCompare(b.mv[0]))};
++}
++function srcChip(s){
++  const t=R.tmhm.find(x=>x[0]===s);
++  if(!t) return `<span class="msrc">${s}</span>`;
++  const label=t[0]+' '+t[2], n=(R.itemIndex[label]||[]).length;
++  return n?`<button class="msrc tm" data-item="${label}">${t[0]} · ${n} on map</button>`
++          :`<span class="msrc tm">${t[0]}</span>`;
++}
++function moveRow(r){
++  const [nm,ty,,ac,pp]=r.mv, c=TC[ty]||TC.Mystery;
++  const bits=[`${r.pw} pow`, (ac?ac+'%':'never misses'),
++              r.stab>1?'STAB ×1.5':null,
++              r.ef&&r.ef[0]!==1?`×${r.ef[0]}`:null,
++              `${r.mv[6]?'Atk':'Sp.Atk'} ${r.stat}`].filter(Boolean);
++  return `<div class="mvrow">
++    <span class="ty" style="background:${c};color:${inkOn(c)}">${ty}</span>
++    <div class="mvmain"><div class="mvn">${nm}<span class="mvpp">${pp} PP</span></div>
++      <div class="mvwhy">${bits.join(' · ')}</div>
++      ${r.ef?`<div class="mvcav">${r.ef[2]}</div>`:''}
++      <div class="mvsrc">${r.src.map(srcChip).join('')}</div></div>
++    <div class="mvscore"><b>${r.score}</b><span>hit</span></div></div>`;
++}
++function moveUtil(r){
++  const [nm,ty,,ac,pp,,,d]=r.mv, c=TC[ty]||TC.Mystery;
++  return `<div class="mvrow util">
++    <span class="ty" style="background:${c};color:${inkOn(c)}">${ty}</span>
++    <div class="mvmain"><div class="mvn">${nm}<span class="mvpp">${pp} PP${ac?' · '+ac+'%':''}</span></div>
++      ${d?`<div class="mvwhy">${d}</div>`:''}
++      <div class="mvsrc">${r.src.map(srcChip).join('')}</div></div></div>`;
++}
++function movesSection(name){
++  const L=moveList(name); if(!L||(!L.hit.length&&!L.util.length)) return '';
++  const top=L.hit.slice(0,6), rest=L.hit.slice(6);
++  return `<div class="sec"><div class="sechd"><h3>Best moves it can learn</h3>
++      <span class="mut" style="font-size:12px">${L.hit.length+L.util.length} total</span></div>
++    ${top.length?`<div class="mvs">${top.map(moveRow).join('')}</div>
++      <div class="mut" style="font-size:11.5px;margin-top:9px">Ranked by what it would actually hit for:
++      power × accuracy × same-type bonus × the stat that type runs off, with a stated
++      adjustment where the listed power lies — Hyper Beam's recharge turn, Fury Attack's
++      2–5 hits. Gen III picks physical or special by type, not per move.</div>`
++      :'<div class="mut" style="font-size:13px">No damaging moves.</div>'}
++    ${rest.length?`<details class="mvmore"><summary>${rest.length} weaker attack${rest.length===1?'':'s'}</summary>
++      <div class="mvs">${rest.map(moveRow).join('')}</div></details>`:''}
++    ${L.util.length?`<details class="mvmore"><summary>${L.util.length} status and support move${L.util.length===1?'':'s'}</summary>
++      <div class="mvs">${L.util.map(moveUtil).join('')}</div></details>`:''}</div>`;
++}
+ function types(n){return D.types[n]||[]}
+ function tcol(n){return TC[types(n)[0]]||TC.Mystery}
+ function badges(n){return `<span class="tys">${types(n).map(t=>{const c=TC[t]||TC.Mystery;
+@@ -1320,7 +1501,7 @@
+   const rows=R.species[name]||[], best=rows[0], nA=new Set(rows.map(r=>r.area)).size;
+   const info=R.mon[name]||{}, evo=(R.evo[name]||[]);
+   const sp=(D.specials[region]||{})[name];
+-  const bst=STATS.reduce((s,[k])=>s+(info[k]||0),0);
++  const bst=STATS.reduce((s,[k])=>s+(info[k]||0),0), rl=role(name);
+   const held=[info.ic&&`${info.ic} (50%)`, info.ir&&`${info.ir} (5%)`].filter(Boolean).join(' · ');
+   const facts=[
+     ['Catch rate', info.catch!==undefined?`${info.catch} / 255${info.catch>=200?' — very easy':info.catch<=45?' — tough':''}`:'—'],
+@@ -1339,11 +1520,18 @@
+     <div class="sec"><div class="grid">
+       ${facts.map(([k,v])=>`<div class="tile2"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('')}
+     </div>
+-    <div class="tile2" style="margin-top:9px"><div class="k">Base stats · total ${bst}</div>
+-      ${STATS.map(([k,l])=>`<div class="statrow"><span class="k">${l}</span>
+-        <span class="b"><i style="width:${Math.min(100,(info[k]||0)/180*100)}%"></i></span>
+-        <span class="v">${info[k]??'—'}</span></div>`).join('')}</div></div>
++    <div class="tile2" style="margin-top:9px"><div class="k">Base stats · total ${bst}${
++        rl?` · beats ${statPct(R.rank.bst,bst)}% of the Pokédex`:''}</div>
++      ${rl?`<div class="rolechip">${rl.text}</div>`:''}
++      ${STATS.map(([k,l])=>{const p=rl?rl.p[k]:0, t=tier(p);
++        return `<div class="statrow"><span class="k">${l}</span>
++        <span class="b ${t[2]}"><i style="width:${Math.max(p,2)}%"></i></span>
++        <span class="v">${info[k]??'—'}</span><span class="pc2">${rl?p+'%':''}</span></div>`}).join('')}
++      ${rl?`<div class="mut" style="font-size:11px;margin-top:8px">Bars show where each stat lands
++        against all 386 Pokémon — ${tier(rl.p.spe)[1].toLowerCase()} Speed, ${tier(rl.bulk)[1].toLowerCase()} bulk.
++        The number on the right is the percentage it beats.</div>`:''}</div></div>
+     ${evoFamily(name)}
++    ${movesSection(name)}
+     ${rows.length?`<div class="sec"><div class="sechd"><h3>Where to find it</h3></div><div class="mons">
+       ${rows.map(r=>`<div class="mon" data-place-area="${r.area}" style="${tint(name)}">
+         <div class="who"><b>${r.area_name}</b><span class="mut" style="font-size:12px">${MLABEL[r.method]}</span></div>
