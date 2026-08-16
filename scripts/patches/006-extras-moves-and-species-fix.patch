@@ -1,0 +1,200 @@
+--- a/build_extras.py
++++ b/build_extras.py
+@@ -13,9 +13,24 @@
+     return out
+ 
+ TMHM_MOVES = {}
++TMHM_CONST = {}          # "TM06" -> "MOVE_TOXIC"
+ def load_tmhm(repo):
+     """TM/HM number -> move, so a TM is never just a bare number."""
+     TMHM_MOVES.clear()
++    TMHM_CONST.clear()
++    # Emerald builds the table from a macro list; FireRed spells the array out.
++    p = os.path.join(repo, 'include/constants/tms_hms.h')
++    if os.path.exists(p):
++        src = open(p).read()
++        tms = re.findall(r'F\((\w+)\)', src.split('FOREACH_TM(F)', 1)[-1].split('FOREACH_HM')[0])
++        hms = re.findall(r'F\((\w+)\)', src.split('FOREACH_HM(F)', 1)[-1].split('FOREACH_TMHM')[0])
++        for kind, lst in (('TM', tms), ('HM', hms)):
++            for i, mv in enumerate(lst):
++                key = '%s%02d' % (kind, i + 1)
++                TMHM_MOVES[key] = nice(mv)
++                TMHM_CONST[key] = 'MOVE_' + mv
++        if TMHM_MOVES:
++            return
+     for path in (os.path.join(repo, 'src/data/party_menu.h'),
+                  os.path.join(repo, 'src/party_menu.c')):
+         if not os.path.exists(path):
+@@ -27,6 +42,7 @@
+         for i, mv in enumerate(moves):
+             key = f'TM{i+1:02d}' if i < 50 else f'HM{i-49:02d}'
+             TMHM_MOVES[key] = nice(mv)
++            TMHM_CONST[key] = 'MOVE_' + mv
+         if TMHM_MOVES:
+             return
+ 
+@@ -105,11 +121,26 @@
+     'catchRate': 'catch', 'expYield': 'exp', 'friendship': 'friend',
+     'growthRate': 'growth',
+ }
++def keyed_blocks(src, pattern):
++    """Split a C designated-initialiser table on its keys.
++
++    Brace-matching with a non-greedy body breaks the moment one entry is
++    written on a single line -- "[SPECIES_NONE] = {0}," swallowed Bulbasaur,
++    which is why Bulbasaur had no stats and an entry called "None" had his.
++    """
++    keys = list(re.finditer(pattern, src))
++    for i, m in enumerate(keys):
++        end = keys[i + 1].start() if i + 1 < len(keys) else len(src)
++        yield m.group(1), src[m.end():end]
++
++
+ def build_species(repo):
+     src = open(os.path.join(repo, 'src/data/pokemon/species_info.h')).read()
+     out = {}
+-    for m in re.finditer(r'\[(SPECIES_\w+)\]\s*=\s*\{(.*?)\n    \},', src, re.S):
+-        name, body = species_name(m.group(1)), m.group(2)
++    for const, body in keyed_blocks(src, r'\[(SPECIES_\w+)\]\s*=\s*\{'):
++        if const == 'SPECIES_NONE':
++            continue
++        name = species_name(const)
+         d = {}
+         for k, short in FIELD.items():
+             f = re.search(r'\.' + k + r'\s*=\s*([\w()]+)', body)
+@@ -140,6 +171,110 @@
+         out[name] = d
+     return out
+ 
++# ---------------------------------------------------------------- moves
++def build_moves(repo):
++    """Every move's type, power, accuracy, PP, description, and whether it is
++    physical or special.
++
++    Gen III has no per-move category: the split is by type, and battle.h states
++    the rule as IS_TYPE_PHYSICAL(t) == (t < TYPE_MYSTERY). Read both the type
++    order and that threshold out of the source rather than hardcoding a list.
++    """
++    order = {}
++    for m in re.finditer(r'#define\s+(TYPE_\w+)\s+(\d+)',
++                         open(os.path.join(repo, 'include/constants/pokemon.h')).read()):
++        order[m.group(1)] = int(m.group(2))
++    cut = re.search(r'#define\s+IS_TYPE_PHYSICAL\(\w+\)\s*\(\w+\s*<\s*(TYPE_\w+)\)',
++                    open(os.path.join(repo, 'include/battle.h')).read())
++    split = order[cut.group(1)] if cut and cut.group(1) in order else 9
++
++    names, descs = {}, {}
++    for m in re.finditer(r'\[(MOVE_\w+)\]\s*=\s*_\("([^"]*)"\)',
++                         open(os.path.join(repo, 'src/data/text/move_names.h')).read()):
++        names[m.group(1)] = nice(m.group(2))
++    p = os.path.join(repo, 'src/data/text/move_descriptions.h')
++    if os.path.exists(p):
++        txt = open(p).read()
++        sym = {}
++        for m in re.finditer(r'static const u8 (s\w+Description)\[\]\s*=\s*_\(\s*((?:"[^"]*"\s*)+)\)', txt):
++            sym[m.group(1)] = ' '.join(re.findall(r'"([^"]*)"', m.group(2))).replace('\\n', ' ')
++        for m in re.finditer(r'\[(MOVE_\w+)\s*-\s*1\]\s*=\s*(s\w+Description)', txt):
++            descs[m.group(1)] = re.sub(r'\s+', ' ', sym.get(m.group(2), '')).strip()
++
++    # A flat array, not a dict: learnsets reference moves by index, which keeps
++    # ~13000 move references from being 13000 repeated name strings.
++    out = []
++    src = open(os.path.join(repo, 'src/data/battle_moves.h')).read()
++    for const, body in keyed_blocks(src, r'\[(MOVE_\w+)\]\s*=\s*\{'):
++        if const == 'MOVE_NONE':
++            continue
++        def num(field):
++            m = re.search(r'\.' + field + r'\s*=\s*(-?\d+)', body)
++            return int(m.group(1)) if m else 0
++        t = re.search(r'\.type\s*=\s*(TYPE_\w+)', body)
++        if not t:
++            continue
++        ti = order.get(t.group(1), 0)
++        ef = re.search(r'\.effect\s*=\s*EFFECT_(\w+)', body)
++        out.append([names.get(const, nice(const[5:])), t.group(1)[5:].title(),
++                    num('power'), num('accuracy'), num('pp'), num('priority'),
++                    1 if ti < split else 0, descs.get(const, ''),
++                    ef.group(1) if ef else '', const])
++    return out
++
++
++def build_learnsets(repo, moves):
++    """What each species can actually learn: level-up moves with their level,
++    and the TMs and HMs it is compatible with. Moves are stored as indices into
++    the move table."""
++    idx = {row[9]: i for i, row in enumerate(moves)}          # MOVE_ const -> index
++
++    blocks = {}
++    for m in re.finditer(r'(\w+)\[\]\s*=\s*\{(.*?)\n\};',
++                         open(os.path.join(repo, 'src/data/pokemon/level_up_learnsets.h')).read(), re.S):
++        blocks[m.group(1)] = [[int(lv), idx['MOVE_' + mv]]
++                              for lv, mv in re.findall(r'LEVEL_UP_MOVE\(\s*(\d+)\s*,\s*MOVE_(\w+)\s*\)', m.group(2))
++                              if 'MOVE_' + mv in idx]
++    ptr = open(os.path.join(repo, 'src/data/pokemon/level_up_learnset_pointers.h')).read()
++    lv = {}
++    for const, sym in re.findall(r'\[(SPECIES_\w+)\]\s*=\s*(\w+)', ptr):
++        if const != 'SPECIES_NONE' and sym in blocks:
++            lv[species_name(const)] = blocks[sym]
++
++    # Emerald writes compatibility as ".TOXIC = TRUE"; FireRed as a bitfield of
++    # "TMHM(TM06_TOXIC)". Both name the machine, just differently.
++    by_field = {c[5:]: n for n, c in TMHM_CONST.items()}
++    tm = {}
++    src = open(os.path.join(repo, 'src/data/pokemon/tmhm_learnsets.h')).read()
++    for const, body in keyed_blocks(src, r'\[(SPECIES_\w+)\]\s*=\s*(?:TMHM_LEARNSET\(|\{)'):
++        if const == 'SPECIES_NONE':
++            continue
++        got = {by_field[f] for f in re.findall(r'\.(\w+)\s*=\s*TRUE', body) if f in by_field}
++        got |= {m.group(1) for m in re.finditer(r'TMHM\(((?:TM|HM)\d+)_\w+\)', body)}
++        if got:
++            tm[species_name(const)] = sorted(got)
++
++    # Two compactions, because this is by far the biggest table in the file:
++    # level-up moves flatten to [level, index, level, index, ...], and the ~23
++    # machines per species become a 58-bit mask in hex instead of 23 strings.
++    slot = {n: i for i, n in enumerate(sorted(TMHM_CONST,
++                                              key=lambda k: (k[0] == 'H', k)))}
++    out = {}
++    for sp in set(lv) | set(tm):
++        e = {}
++        if lv.get(sp):
++            e['l'] = [v for pair in lv[sp] for v in pair]
++        if tm.get(sp):
++            bits = 0
++            for n in tm[sp]:
++                if n in slot:
++                    bits |= 1 << slot[n]
++            e['t'] = '%015x' % bits
++        if e:
++            out[sp] = e
++    return out
++
++
+ EVO_TEXT = {
+     'EVO_FRIENDSHIP': lambda v, s: f'High friendship → {s}',
+     'EVO_FRIENDSHIP_DAY': lambda v, s: f'High friendship, daytime → {s}',
+@@ -259,11 +394,23 @@
+     species = build_species(repo)
+     evos = build_evos(repo)
+     trainers, tsec = build_trainers(repo)
++    moves = build_moves(repo)
++    learn = {k: v for k, v in build_learnsets(repo, moves).items() if k in species}
++    # "TM06" -> [move index, display name], so a TM chip can name its move and
++    # still match the item label the atlas already uses for pickups.
++    midx = {row[9]: i for i, row in enumerate(moves)}
++    tmhm = [[n, midx[c], moves[midx[c]][0]]
++            for n, c in sorted(TMHM_CONST.items(), key=lambda kv: (kv[0][0] == 'H', kv[0]))
++            if c in midx]
+     out[key] = {'items': items, 'species': species, 'evos': evos,
+-                'trainers': trainers, 'tsec': tsec}
++                'trainers': trainers, 'tsec': tsec,
++                'moves': [r[:9] for r in moves], 'learn': learn, 'tmhm': tmhm}
+     print(f"{key}: items={sum(len(v) for v in items.values())} in {len(items)} places | "
+           f"species={len(species)} evos={len(evos)} | trainers={len(trainers)} "
+           f"placed={sum(len(v) for v in tsec.values())} in {len(tsec)} places")
++    print(f"{key}: moves={len(moves)} tmhm={len(TMHM_MOVES)} learnsets={len(learn)} "
++          f"lv={sum(len(v.get('l', [])) for v in learn.values())} "
++          f"tm={sum(len(v.get('t', [])) for v in learn.values())}")
+ 
+ json.dump(out, open('/home/claude/extras.json', 'w'))
+ print('size KB:', os.path.getsize('/home/claude/extras.json') // 1024)
