@@ -1,0 +1,200 @@
+--- a/build_app.py
++++ b/build_app.py
+@@ -797,10 +912,11 @@
+ const D = JSON.parse(document.getElementById('data').textContent);
+ const METHODS = __METHODS__, MLABEL = Object.fromEntries(METHODS.map(m=>[m[0],m[1]]));
+ const FREQMAX = {grass:25,surf:9,rock_smash:25,old_rod:35,good_rod:35,super_rod:35};
+-const TC = {Normal:'#9FA37E',Fire:'#F0803C',Water:'#5A93F0',Electric:'#F2C63C',Grass:'#6FC24A',
+-  Ice:'#7FD3D0',Fighting:'#D33F35',Poison:'#B24BB0',Ground:'#DCB35E',Flying:'#9E8CF5',Psychic:'#F65B8C',
+-  Bug:'#A3BA1E',Rock:'#BFA83E',Ghost:'#7A5DA8',Dragon:'#7B45FA',Dark:'#7C6350',Steel:'#AFB3CC',
+-  Fairy:'#DE8AB5',Mystery:'#68A090'};
++// The type colours the series itself uses, rather than an approximation.
++const TC = {Normal:'#A8A77A',Fire:'#EE8130',Water:'#6390F0',Electric:'#F7D02C',Grass:'#7AC74C',
++  Ice:'#96D9D6',Fighting:'#C22E28',Poison:'#A33EA1',Ground:'#E2BF65',Flying:'#A98FF3',Psychic:'#F95587',
++  Bug:'#A6B91A',Rock:'#B6A136',Ghost:'#735797',Dragon:'#6F35FC',Dark:'#705746',Steel:'#B7B7CE',
++  Fairy:'#D685AD',Mystery:'#68A090'};
+ const STATS = [['hp','HP'],['atk','Atk'],['def','Def'],['spa','SpA'],['spd','SpD'],['spe','Spe']];
+ const GOTICO={starter:'★',gift:'🎁',static:'⚔',egg:'◓',trade:'⇄'};
+ const GOTNAME={starter:'Starter',gift:'Gift',static:'Standing on the map',egg:'Egg',trade:'In-game trade'};
+@@ -1092,6 +1208,67 @@
+ function tcol(n){return TC[types(n)[0]]||TC.Mystery}
+ function badges(n){return `<span class="tys">${types(n).map(t=>{const c=TC[t]||TC.Mystery;
+   return `<span class="ty" style="background:${c};color:${inkOn(c)}">${t}</span>`}).join('')}</span>`}
++function cardTint(n){
++  const ts=types(n), [r,g,b]=rgb(tcol(n));
++  const c2=ts[1]?rgb(TC[ts[1]]||TC.Mystery):[r,g,b];
++  return `--g:linear-gradient(145deg,rgba(${r},${g},${b},.52),rgba(${c2[0]},${c2[1]},${c2[2]},.30) 62%,rgba(255,255,255,.55));`;
++}
++function dexNo(n){const d=(R.mon[n]||{}).dex; return d?'#'+String(d).padStart(3,'0'):''}
++function dexCard(n,meta){
++  return `<button class="dexcard" data-sp="${n}" style="${cardTint(n)}"
++    ${selSpecies===n?'aria-current="true"':''}>
++    <span class="dexno">${dexNo(n)}</span>
++    <span class="dexart">${sprite(n,60)}</span>
++    <span class="dexname">${n}</span>
++    <span class="dextys">${types(n).map(t=>{const c=TC[t]||TC.Mystery;
++      return `<span class="ty" style="background:${c};color:${inkOn(c)}">${t}</span>`}).join('')}</span>
++    ${meta?`<span class="dexmeta">${meta}</span>`:''}</button>`;
++}
++/* ---------------- matchups ----------------
++   R.tc.chart holds only the entries that are not x1, as tenths: 20, 05, 00.
++   Everything absent is neutral, and a dual type multiplies both halves, which
++   is where the x4 and x0.25 corners come from. */
++function tmul(atk,def){const r=R.tc.chart[atk]; return r&&r[def]!==undefined?r[def]/10:1}
++function vsTypes(atk,defTypes){return defTypes.reduce((m,t)=>m*tmul(atk,t),1)}
++function vsMon(atk,n){return vsTypes(atk,types(n))}
++// Every attacking type sorted into how hard it lands on this Pokemon.
++function defProfile(n){
++  const out={};
++  for(const t of R.tc.names){const m=vsMon(t,n); if(m!==1) (out[m] ||= []).push(t)}
++  return out;
++}
++// What this Pokemon's own types hit hard, which is the half of a matchup a
++// straight weakness table leaves out.
++function offProfile(n){
++  const out={};
++  for(const d of R.tc.names){
++    const m=Math.max(...types(n).map(t=>tmul(t,d)));
++    if(m>1) (out[m] ||= []).push(d);
++  }
++  return out;
++}
++const MULTXT={0:'No effect',0.25:'×¼',0.5:'×½',2:'×2',4:'×4'};
++function mulClass(m){return m===0?'m0':m<0.5?'mq':m<1?'mh':m>2?'m4':'m2'}
++// Pokemon you can actually get in this game that punish the target: a STAB
++// super-effective attacker, ranked on the stat it would use to land the hit.
++// Set-piece legendaries are excluded for the same reason as the team builder.
++function counters(defName,limit){
++  const out=[];
++  for(const n of Object.keys(R.species)){
++    const m=R.mon[n]; if(!m||m.hp===undefined||isSetPiece(n)||n===defName) continue;
++    let best=1, bt=null;
++    for(const t of types(n)){const v=vsTypes(t,types(defName)); if(v>best){best=v;bt=t}}
++    if(!bt) continue;
++    // The defender's best answer back, so a counter that folds to a return hit
++    // is not sold as a clean one.
++    const back=Math.max(...types(defName).map(t=>vsMon(t,n)));
++    const off=Math.max(statPct(R.rank.atk,m.atk||0),statPct(R.rank.spa,m.spa||0));
++    const spe=statPct(R.rank.spe,m.spe||0);
++    out.push({n,t:bt,x:best,back,score:best*100+off+spe/2-(back>1?40:0)});
++  }
++  out.sort((a,b)=>b.score-a.score||a.n.localeCompare(b.n));
++  return out.slice(0,limit||6);
++}
+ function tint(n){
+   const ts=types(n), [r,g,b]=rgb(tcol(n));
+   const c2=ts[1]?rgb(TC[ts[1]]||TC.Mystery):[r,g,b];
+@@ -1572,6 +1749,46 @@
+   wire(); drawMap(); renderList(); drawInfo(p,false);
+   writeHash();
+ }
++function tyPill(t,extra){const c=TC[t]||TC.Mystery;
++  return `<span class="ty" style="background:${c};color:${inkOn(c)}">${t}${extra||''}</span>`}
++function mulRow(label,cls,list){
++  if(!list||!list.length) return '';
++  return `<div class="mrow ${cls}"><span class="mlab">${label}</span>
++    <span class="mlist">${list.map(t=>tyPill(t)).join('')}</span></div>`;
++}
++function matchupSection(name){
++  if(!R.tc) return '';
++  const d=defProfile(name), o=offProfile(name), cs=counters(name,6);
++  const weak=[...(d[4]||[]),...(d[2]||[])], res=[...(d[0.5]||[]),...(d[0.25]||[])];
++  return `<div class="sec"><div class="sechd"><h3>Matchups</h3>
++    <span class="mut" style="font-size:11.5px">What lands on it, and what it lands on</span></div>
++    <div class="mups">
++      ${mulRow('×4','m4',d[4])}
++      ${mulRow('×2','m2',d[2])}
++      ${mulRow('×½','mh',d[0.5])}
++      ${mulRow('×¼','mq',d[0.25])}
++      ${mulRow('No effect','m0',d[0])}
++      ${!weak.length&&!res.length&&!(d[0]||[]).length?
++        '<div class="mut" style="font-size:12.5px">Nothing hits it for more or less than normal damage.</div>':''}
++    </div>
++    <div class="mups" style="margin-top:10px">
++      ${mulRow('Its hits land ×2 on','m2',o[2])}
++      ${mulRow('And ×4 on','m4',o[4])}
++      ${!(o[2]||[]).length?'<div class="mut" style="font-size:12.5px">Its own types hit nothing for extra damage.</div>':''}
++    </div>
++    ${cs.length?`<div class="sechd" style="margin-top:16px"><h3>What beats it</h3>
++      <span class="mut" style="font-size:11.5px">From ${R.game}</span></div>
++    <div class="mut" style="font-size:11.5px;margin:0 0 10px;max-width:70ch">Pokémon you can get in this game
++      whose own type lands super-effectively, ranked on the attack stat they would use and how fast they get
++      to use it. A cross means ${name} hits back for extra damage too, so the trade goes both ways.</div>
++    <div class="cnts">${cs.map(c=>`<button class="cnt" data-sp="${c.n}" style="${tint(c.n)}">
++      ${sprite(c.n,48)}
++      <span class="cmain"><b>${c.n}</b>
++        <span class="ctags">${tyPill(c.t)}<span class="cx">×${c.x}</span>
++        ${c.back>1?`<span class="cback">✕ hits back ×${c.back}</span>`:''}</span></span>
++    </button>`).join('')}</div>`:''}
++  </div>`;
++}
+ function selectSpecies(name){
+   selSpecies=name; selItem=null;
+   const allrows=R.species[name]||[], rows=allrows.filter(r=>!r.k), got=allrows.filter(r=>r.k);
+@@ -1589,11 +1806,24 @@
+     ['Evolves', evo.length?evo.length+' way'+(evo.length===1?'':'s')+' — see below':'Does not evolve'],
+   ];
+   document.getElementById('detail').innerHTML=`
+-    <div class="dhd" style="display:flex;gap:18px;align-items:center">${sprite(name,132)}
+-      <div><h2>${name}</h2><div style="margin-top:7px">${badges(name)} ${rarityChip(name)}</div>
+-      <div class="dmeta">${rows.length?`${rows.length} slot${rows.length===1?'':'s'} across ${nA} area${nA===1?'':'s'}`
+-        +(best?` · best odds ${best.pct}% at ${best.area_name}`:'')
+-        :got.length?'Not a wild encounter — see below':'Not in any standard encounter table'}</div></div></div>
++    <div class="hero" style="${cardTint(name)}">
++      <div class="herotop">
++        <div class="heroinfo"><div class="heroname">${name}</div>
++          ${info.cat?`<div class="herocat">${info.cat} Pokémon</div>`:''}
++          <div style="margin-top:8px">${badges(name)} ${rarityChip(name)}</div></div>
++        <div class="herono">${dexNo(name)}</div></div>
++      <div class="herobody">
++        <div class="heroinfo">
++          <div class="herodims">
++            ${info.ht?`<div>Height<b>${(info.ht/10).toFixed(1)} m</b></div>`:''}
++            ${info.wt?`<div>Weight<b>${(info.wt/10).toFixed(1)} kg</b></div>`:''}
++            <div>Total<b>${bst}</b></div></div>
++          <div class="dmeta" style="margin-top:9px">${rows.length?`${rows.length} slot${rows.length===1?'':'s'} across ${nA} area${nA===1?'':'s'}`
++            +(best?` · best odds ${best.pct}% at ${best.area_name}`:'')
++            :got.length?'Not a wild encounter — see below':'Not in any standard encounter table'}</div>
++        </div>
++        ${sprite(name,120)}
++      </div></div>
+     ${sp?`<div class="note">${sp}</div>`:''}
+     <div class="sec"><div class="grid">
+       ${facts.map(([k,v])=>`<div class="tile2"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('')}
+@@ -1608,6 +1838,7 @@
+       ${rl?`<div class="mut" style="font-size:11px;margin-top:8px">Bars show where each stat lands
+         against all 386 Pokémon — ${tier(rl.p.spe)[1].toLowerCase()} Speed, ${tier(rl.bulk)[1].toLowerCase()} bulk.
+         The number on the right is the percentage it beats.</div>`:''}</div></div>
++    ${matchupSection(name)}
+     ${evoFamily(name)}
+     ${movesSection(name)}
+     ${got.length?`<div class="sec"><div class="sechd"><h3>How you get it</h3></div><div class="grid">
+@@ -1680,8 +1911,10 @@
+   const el=document.getElementById('chips');
+   if(tab!=='mons'){el.innerHTML='';return}
+   const present=[...new Set(Object.keys(R.species).flatMap(n=>types(n)))].sort();
+-  el.innerHTML=present.map(t=>{const c=TC[t]||TC.Mystery, on=typeFilter===t;
+-    return `<button class="chip" data-type="${t}" style="${on?`background:${c};color:${inkOn(c)};border-color:${c}`:`border-left:4px solid ${c}`}">${t}</button>`}).join('');
++  el.innerHTML=present.map(t=>{const c=TC[t]||TC.Mystery, on=typeFilter===t, [r,g,b]=rgb(c);
++    return `<button class="chip" data-type="${t}" style="${on
++      ?`background:${c};color:${inkOn(c)};border-color:${c}`
++      :`background:rgba(${r},${g},${b},.16);border-color:rgba(${r},${g},${b},.42);color:var(--ink)`}">${t}</button>`}).join('');
+   el.querySelectorAll('[data-type]').forEach(b=>b.onclick=()=>{
+     typeFilter=typeFilter===b.dataset.type?null:b.dataset.type; drawChips(); renderList()});
+ }
+@@ -1751,12 +1984,9 @@
+     if(sortBy==='story'){
+       const fs={}; for(const n of names) fs[n]=firstSeen(n);
+       names.sort((a,b)=>fs[a].rank-fs[b].rank||fs[a].lv-fs[b].lv||a.localeCompare(b));
+-      html=names.map(n=>{const f=fs[n];
+-        return `<button class="row" data-sp="${n}" style="${tint(n)}" ${selSpecies===n?'aria-current="true"':''}>
+-          ${sprite(n,40)}<span class="nm">${n}<span class="mut" style="display:block;font-size:11px;font-weight:700">
+-          ${f.place?`first at ${f.place.name}`:'special'}</span></span>
+-          <small>${f.place?`Lv ${f.lv}`:''}</small></button>`}).join('')
+-        ||'<div class="empty">Nothing matches.</div>';
++      html=names.length?`<div class="dexgrid">${names.map(n=>{const f=fs[n];
++        return dexCard(n, f.place?`${f.place.name} · Lv ${f.lv}`:'Special')}).join('')}</div>`
++        :'<div class="empty">Nothing matches.</div>';
+       el.innerHTML=html;
+       el.querySelectorAll('[data-sp]').forEach(b=>b.onclick=()=>{selectSpecies(b.dataset.sp);
+         if(innerWidth<=760) setTimeout(()=>document.getElementById('detail').scrollIntoView({behavior:'smooth',block:'start'}),80);});
