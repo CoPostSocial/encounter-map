@@ -1,0 +1,170 @@
+            open(os.path.join(DPE, 'src/Pokedex_Data_Table.c')).read(),
+            r'\[(NATIONAL_DEX_\w+)\]\s*=\s*\n?\s*\{'):
+        cat = re.search(r'\.categoryName\s*=\s*\{([^}]*)\}', body)
+        h = re.search(r'\.height\s*=\s*(\d+)', body)
+        w = re.search(r'\.weight\s*=\s*(\d+)', body)
+        ent[const] = (decode_chars(cat.group(1)) if cat else '',
+                      int(h.group(1)) if h else 0, int(w.group(1)) if w else 0)
+
+    for const, d in species.items():
+        nd = s2n.get(const)
+        if not nd:
+            # Forms share their base species' dex entry and are not in the table
+            base = re.sub(r'_(MEGA(_[XY])?|GIGA|A|G|H|F|P|S|B|C|D|E)$', '', const)
+            nd = s2n.get(base)
+        if nd:
+            if nd in order:
+                d['dex'] = order[nd]
+            if nd in ent:
+                cat, h, w = ent[nd]
+                if cat:
+                    d['cat'] = cat
+                if h:
+                    d['ht'] = h
+                if w:
+                    d['wt'] = w
+    return sum(1 for d in species.values() if 'dex' in d)
+
+
+# ---------------------------------------------------------------- borrius dex order
+def build_regional(species):
+    src = open(os.path.join(DPE, 'src/Pokedex_Orders.c')).read()
+    m = re.search(r'gPokedexOrder_Regional\[\]\s*=\s*\{(.*?)\n\};', src, re.S)
+    if not m:
+        return []
+    order = [c for c in re.findall(r'(SPECIES_\w+)', m.group(1))]
+    for n, const in enumerate(order, 1):
+        if const in species:
+            species[const]['rdex'] = n
+    return order
+
+
+# ---------------------------------------------------------------- evolution
+EVO = {
+    'EVO_LEVEL': lambda v, s: f'Level {v} → {s}',
+    'EVO_ITEM': lambda v, s: f'Use {item_name(v)} → {s}',
+    'EVO_TRADE': lambda v, s: f'Trade → {s}',
+    'EVO_TRADE_ITEM': lambda v, s: f'Trade holding {item_name(v)} → {s}',
+    'EVO_FRIENDSHIP': lambda v, s: f'Level up with high friendship → {s}',
+    'EVO_FRIENDSHIP_DAY': lambda v, s: f'Level up with high friendship, daytime → {s}',
+    'EVO_FRIENDSHIP_NIGHT': lambda v, s: f'Level up with high friendship, at night → {s}',
+    'EVO_LEVEL_ATK_GT_DEF': lambda v, s: f'Level {v} with Attack > Defence → {s}',
+    'EVO_LEVEL_ATK_EQ_DEF': lambda v, s: f'Level {v} with Attack = Defence → {s}',
+    'EVO_LEVEL_ATK_LT_DEF': lambda v, s: f'Level {v} with Attack < Defence → {s}',
+    'EVO_LEVEL_SILCOON': lambda v, s: f'Level {v} (Silcoon branch) → {s}',
+    'EVO_LEVEL_CASCOON': lambda v, s: f'Level {v} (Cascoon branch) → {s}',
+    'EVO_LEVEL_NINJASK': lambda v, s: f'Level {v} → {s}',
+    'EVO_LEVEL_SHEDINJA': lambda v, s: f'Level {v} with a spare Poké Ball and party slot → {s}',
+    'EVO_BEAUTY': lambda v, s: f'Level up with Beauty {v}+ → {s}',
+    'EVO_LEVEL_DAY': lambda v, s: f'Level {v} in the daytime → {s}',
+    'EVO_LEVEL_NIGHT': lambda v, s: f'Level {v} at night → {s}',
+    'EVO_LEVEL_DUSK': lambda v, s: f'Level {v} at dusk → {s}',
+    'EVO_ITEM_HOLD_DAY': lambda v, s: f'Level up holding {item_name(v)}, daytime → {s}',
+    'EVO_ITEM_HOLD_NIGHT': lambda v, s: f'Level up holding {item_name(v)}, at night → {s}',
+    'EVO_ITEM_HOLD': lambda v, s: f'Level up holding {item_name(v)} → {s}',
+    'EVO_MOVE': lambda v, s: f'Level up knowing {move_name(v)} → {s}',
+    'EVO_MOVE_TYPE': lambda v, s: f'Level up knowing a {v[5:].title()} move → {s}',
+    'EVO_MAP': lambda v, s: f'Level up at a specific place → {s}',
+    'EVO_ITEM_MALE': lambda v, s: f'Use {item_name(v)} on a male → {s}',
+    'EVO_ITEM_FEMALE': lambda v, s: f'Use {item_name(v)} on a female → {s}',
+    'EVO_LEVEL_MALE': lambda v, s: f'Level {v}, male → {s}',
+    'EVO_LEVEL_FEMALE': lambda v, s: f'Level {v}, female → {s}',
+    'EVO_CRITICAL_HITS': lambda v, s: f'Land {v} critical hits in one battle → {s}',
+    'EVO_LEVEL_RAIN': lambda v, s: f'Level {v} while it is raining → {s}',
+    'EVO_SPECIFIC_MON_IN_PARTY': lambda v, s: f'Level up with a specific Pokémon in the party → {s}',
+    'EVO_LEVEL_DARK_TYPE_MON_IN_PARTY': lambda v, s: f'Level {v} with a Dark type in the party → {s}',
+    'EVO_TRADE_SPECIFIC_MON': lambda v, s: f'Trade for a specific Pokémon → {s}',
+    'EVO_DAMAGE_LOCATION': lambda v, s: f'Take damage at a specific place → {s}',
+    'EVO_LEVEL_NATURE_AMPED': lambda v, s: f'Level {v} with an amped nature → {s}',
+    'EVO_LEVEL_NATURE_LOW_KEY': lambda v, s: f'Level {v} with a low-key nature → {s}',
+}
+# Mega Evolution and Gigantamax are battle-only transformations, not evolutions
+# you keep. They belong on the species panel, but not in the family line.
+TEMP_EVO = {'EVO_MEGA', 'EVO_GIGANTAMAX', 'EVO_PRIMAL_REVERSION', 'EVO_ULTRA_BURST'}
+
+
+def build_evos(species):
+    src = open(os.path.join(DPE, 'src/Evolution Table.c')).read()
+    evos, forms = {}, {}
+    for const, body in keyed_blocks(src, r'\[(SPECIES_\w+)\]\s*=\s*\{'):
+        steps, temp = [], []
+        for meth, val, target, _x in re.findall(
+                r'\{\s*(EVO_\w+)\s*,\s*([^,]+?)\s*,\s*(SPECIES_\w+)\s*,\s*([^}]*)\}', body):
+            tname = species.get(target, {}).get('name', target[8:].title())
+            val = val.strip()
+            if meth in TEMP_EVO:
+                lbl = {'EVO_MEGA': 'Mega Evolves', 'EVO_GIGANTAMAX': 'Gigantamaxes',
+                       'EVO_PRIMAL_REVERSION': 'Primal Reversion',
+                       'EVO_ULTRA_BURST': 'Ultra Burst'}[meth]
+                it = item_name(val) if val.startswith('ITEM_') else ''
+                temp.append({'to': tname, 'how': lbl + (f' with {it}' if it else '')})
+                continue
+            f = EVO.get(meth)
+            steps.append(f(val, tname) if f
+                         else f'{meth[4:].replace("_", " ").title()} → {tname}')
+        if steps:
+            evos[const] = steps
+        if temp:
+            forms[const] = temp
+    return evos, forms
+
+
+# ---------------------------------------------------------------- learnsets
+def build_learnsets(species):
+    src = open(os.path.join(DPE, 'src/Learnsets.c')).read()
+    tables = {}
+    for m in re.finditer(r'static const struct LevelUpMove (\w+)\[\]\s*=\s*\{(.*?)\};', src, re.S):
+        tables[m.group(1)] = [(int(l), move_name(mv)) for l, mv in
+                              re.findall(r'LEVEL_UP_MOVE\(\s*(\d+)\s*,\s*(MOVE_\w+)\s*\)', m.group(2))]
+    out = {}
+    for m in re.finditer(r'\[(SPECIES_\w+)\]\s*=\s*(\w+)\s*,', src):
+        t = tables.get(m.group(2))
+        if t:
+            out[m.group(1)] = t
+    return out
+
+
+# ---------------------------------------------------------------- TMs and HMs
+def build_tmhm(species):
+    """gTMHMMoves gives the machine order; one text file per machine lists which
+    species learn it, keyed by the game's own uppercase name."""
+    src = open(os.path.join(DPE, 'src/TM_Tutor_Tables.c')).read()
+    m = re.search(r'gTMHMMoves\[[^\]]*\]\s*=\s*\{(.*?)\n\};', src, re.S)
+    moves = [move_name(x) for x in re.findall(r'(MOVE_\w+)', m.group(1))] if m else []
+
+    by_upper = collections.defaultdict(list)
+    for const, d in species.items():
+        by_upper[re.sub(r'[^A-Z0-9]', '', const[8:])].append(const)
+
+    machines, compat = [], collections.defaultdict(list)
+    for p in sorted(glob.glob(os.path.join(DPE, 'src/tm_compatibility/*.txt')),
+                    key=lambda x: int(re.match(r'(\d+)', os.path.basename(x)).group(1))):
+        lines = [l.strip().lstrip('﻿') for l in
+                 open(p, encoding='utf-8-sig', errors='ignore')]
+        head = lines[0] if lines else ''
+        # Two of these headers are malformed in the source -- one carries a
+        # stray digit ("3HM01: Cut"), one a zero-width mark -- so search the
+        # line rather than anchoring at its start, or those machines vanish.
+        hm = re.search(r'(TM|HM)\s*(\d+)\s*:\s*(.*)', head)
+        if not hm:
+            print('  !! no machine header in', os.path.basename(p), repr(head[:40]))
+            continue
+        idx = len(machines)
+        machines.append({'n': f'{hm.group(1)}{hm.group(2)}', 'mv': hm.group(3).strip(),
+                         'hm': hm.group(1) == 'HM'})
+        for nm in lines[1:]:
+            if not nm:
+                continue
+            k = re.sub(r'[^A-Z0-9]', '', nm.upper())
+            for const in by_upper.get(k, []):
+                compat[const].append(idx)
+    return machines, compat
+
+
+# ---------------------------------------------------------------- run
+sprites = build_sprite_index()
+species = build_base_stats(sprites)
+ndex = build_dex(species)
+regional = build_regional(species)
+evos, forms = build_evos(species)
+learn = build_learnsets(species)
