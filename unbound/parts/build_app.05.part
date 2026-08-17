@@ -1,0 +1,157 @@
+    <button class="chip" data-f="borrius" aria-pressed="${F.borrius}">Borrius dex</button>
+    <select id="fplace" class="sel"><option value="">Anywhere</option>
+      ${opts.map(n=>`<option value="${esc(n)}"${F.place===n?' selected':''}>${esc(n)}</option>`).join('')}
+    </select>
+    <select id="fstat" class="sel"><option value="">Any stat</option>
+      ${STATSORTS.map(([k,l])=>`<option value="${k}"${F.sKey===k?' selected':''}>${l}</option>`).join('')}
+    </select>
+    <input id="fmin" class="num" type="number" min="0" step="5" placeholder="min"
+      value="${F.sMin||''}" ${F.sKey?'':'disabled'}>
+    ${activeF().length?'<button class="chip clearf" data-f="clear">Clear</button>':''}`;
+  // The filter row scrolls sideways on a phone, so an active place or stat can
+  // sit off-screen. Restate it somewhere that cannot scroll away.
+  const sum=document.getElementById('fsummary');
+  const a=activeF();
+  sum.innerHTML=a.length?`<span class="lbl">Showing</span>${
+    a.map(x=>`<span class="fpill">${esc(x)}</span>`).join('')}
+    <button class="chip clearf" data-f="clear">Clear all</button>`:'';
+  sum.style.display=a.length?'':'none';
+  sum.querySelectorAll('[data-f]').forEach(b=>b.onclick=()=>{
+    F={wild:false,nomega:false,borrius:false,place:'',sKey:'',sMin:0};
+    drawFilters(); drawDex()});
+  el.querySelectorAll('[data-f]').forEach(b=>b.onclick=()=>{
+    const k=b.dataset.f;
+    if(k==='clear') F={wild:false,nomega:false,borrius:false,place:'',sKey:'',sMin:0};
+    else F[k]=!F[k];
+    drawFilters(); drawDex()});
+  const pl=document.getElementById('fplace');
+  pl.onchange=()=>{F.place=pl.value; drawFilters(); drawDex()};
+  const st=document.getElementById('fstat');
+  st.onchange=()=>{F.sKey=st.value; if(!F.sKey) F.sMin=0; drawFilters(); drawDex()};
+  const mn=document.getElementById('fmin');
+  if(mn) mn.oninput=()=>{F.sMin=parseInt(mn.value||'0',10)||0; drawDex()};
+  keepVisible(el);
+}
+// Which species each place holds, so the place filter is a set lookup rather
+// than a scan of every encounter row per keystroke.
+const AT={};
+for(const mp of D.maps){
+  const set=new Set();
+  for(const k in mp.methods) for(const r of mp.methods[k].rows) set.add(r.s);
+  AT[mp.name]=set;
+}
+function passes(n){
+  const m=M[n];
+  if(F.wild&&!obtainable(n)) return false;
+  if(F.nomega&&m.mega) return false;
+  if(F.borrius&&!m.rdex) return false;
+  if(F.place&&!(AT[F.place]||new Set()).has(n)) return false;
+  if(F.sKey&&F.sMin){const v=statOf(n,F.sKey); if(v===null||v<F.sMin) return false}
+  return true;
+}
+function drawChips(){
+  const el=document.getElementById('chips');
+  const present=[...new Set(Object.keys(M).flatMap(n=>types(n)))].sort();
+  el.innerHTML=present.map(t=>{const c=TC[t]||'#A8A77A',on=typeFilter===t,[r,g,b]=rgb(c);
+    return `<button class="chip" data-type="${t}" style="${on
+      ?`background:${c};color:${inkOn(c)};border-color:${c}`
+      :`background:rgba(${r},${g},${b},.16);border-color:rgba(${r},${g},${b},.42);color:var(--ink)`}">${t}</button>`}).join('');
+  el.querySelectorAll('[data-type]').forEach(b=>b.onclick=()=>{
+    typeFilter=typeFilter===b.dataset.type?null:b.dataset.type;drawChips();drawDex()});
+  keepVisible(el);
+}
+
+/* ---------------- locations ---------------- */
+function drawLocs(){
+  const q=query.toLowerCase();
+  const list=D.maps.filter(m=>!q||m.name.toLowerCase().includes(q)
+    ||Object.values(m.methods).some(b=>b.rows.some(r=>r.s.toLowerCase().includes(q))));
+  document.getElementById('loclist').innerHTML = list.length
+    ? `<div class="locs">${list.map(m=>{
+        const n=Object.values(m.methods).reduce((s,b)=>s+b.rows.length,0);
+        return `<button class="loc" data-loc="${esc(m.name)}">
+          <b>${esc(m.name)}</b>
+          <div class="lm">${Object.values(m.methods).map(b=>b.label).join(' · ')}</div>
+          <div class="lm">${n} entr${n===1?'y':'ies'}</div>
+          ${m.unnamed?'<span class="warn">Name not documented</span>'
+            :m.inferred?'<span class="warn">Sub-area, name inferred</span>':''}</button>`}).join('')}</div>`
+    : '<div class="empty">No location matches.</div>';
+  document.getElementById('loccount').textContent=`${list.length} of ${D.maps.length}`;
+  wire();
+}
+function locPanel(name){
+  const m=D.maps.find(x=>x.name===name); if(!m) return '';
+  return `<div class="card">
+    <div class="ghd"><h2>${esc(m.name)}</h2>
+      <div class="mut" style="font-size:13px;margin-top:6px">${
+        Object.values(m.methods).map(b=>`${b.label} — ${b.rate}% step rate`).join(' · ')}</div></div>
+    ${m.unnamed?`<div class="note warn">This area has no documented name. The encounter data lists it only as
+      map ${m.g}‑${m.m}; the levels and rates below are real, the name is not known.</div>`
+      :m.inferred?`<div class="note warn">A sub-area of <b>${esc(m.near)}</b>. Its own name is not documented —
+      matched by encounter contents at ${Math.round(m.inferred*100)}% overlap.</div>`:''}
+    ${Object.values(m.methods).map(b=>`<div class="sec">
+      <div class="sechd"><h3>${esc(b.label)}</h3>
+        <span class="mut" style="font-size:11.5px">${b.rate}% chance per step</span></div>
+      <div class="mons">${b.rows.map(r=>`<button class="mon" data-sp="${esc(r.s)}" style="${tint(r.s)}">
+        ${sprite(r.s,44)}<div class="who"><b>${esc(r.s)}</b>${badges(r.s)}</div>
+        <div class="lv">Lv ${r.min===r.max?r.min:r.min+'–'+r.max}</div>
+        <div class="bar"><i style="width:${Math.max(r.pct,2)}%"></i></div>
+        <div class="pc">${r.pct}%</div></button>`).join('')}</div></div>`).join('')}
+  </div>`;
+}
+
+/* ---------------- bosses ---------------- */
+function bossPlan(party,lv){
+  if(!party.length) return null;
+  const known=party.filter(p=>M[p.s]);
+  if(!known.length) return null;
+  const avg=t=>known.reduce((s,p)=>s+vsMon(t,p.s),0)/known.length;
+  const scored=TCH.names.map(t=>({t,v:avg(t),hits:known.filter(p=>vsMon(t,p.s)>1).length}))
+    .sort((a,b)=>b.v-a.v);
+  const bring=scored.filter(s=>s.v>1.15).slice(0,4);
+  const avoid=scored.filter(s=>s.v<0.8).slice(-3).reverse();
+  const mons=[];
+  for(const n in M){
+    const m=M[n]; if(m.hp===undefined||!obtainable(n)) continue;
+    if(known.some(p=>p.s===n)) continue;
+    if(lv&&earliestLv(n)>lv+4) continue;
+    const cov=known.reduce((s,p)=>s+Math.max(...types(n).map(t=>vsTypes(t,types(p.s)))),0)/known.length;
+    if(cov<=1.15) continue;
+    const back=known.reduce((s,p)=>s+Math.max(...types(p.s).map(t=>vsMon(t,n))),0)/known.length;
+    const off=Math.max(statPct(RANK.atk,m.atk||0),statPct(RANK.spa,m.spa||0));
+    mons.push({n,cov,back,score:cov*100+off/2-(back>1.3?35:0)});
+  }
+  mons.sort((a,b)=>b.score-a.score||a.n.localeCompare(b.n));
+  return {bring,avoid,mons:mons.slice(0,4),known:known.length,total:party.length};
+}
+// Each plan scans all 1024 species. Doing that for 98 bosses up front cost ten
+// seconds of blocked main thread before the list even appeared, for panels that
+// are closed by default. Render a shell and compute on first open.
+const PLANS=[];
+function planBlock(party,lv){
+  const i=PLANS.length; PLANS.push({party,lv});
+  return `<details class="plan" data-plan="${i}"><summary>How to beat it</summary>
+    <div class="planbody"><div class="mut" style="font-size:12px">Working it out…</div></div></details>`;
+}
+function fillPlan(det){
+  if(det.dataset.done) return;
+  det.dataset.done=1;
+  const {party,lv}=PLANS[+det.dataset.plan]||{};
+  const body=det.querySelector('.planbody');
+  body.innerHTML=party?planBody(party,lv):'';
+  body.querySelectorAll('[data-sp]').forEach(b=>b.onclick=()=>selectSpecies(b.dataset.sp));
+}
+function planBody(party,lv){
+  const p=bossPlan(party,lv);
+  if(!p||(!p.bring.length&&!p.mons.length))
+    return '<div class="mut" style="font-size:12px">Nothing in this game covers that party cleanly.</div>';
+  return `
+    ${p.bring.length?`<div class="mrow m2"><span class="mlab">Bring</span><span class="mlist">${
+      p.bring.map(s=>tyPill(s.t,` <b>${s.hits}/${p.known}</b>`)).join('')}</span></div>`:''}
+    ${p.avoid.length?`<div class="mrow mh"><span class="mlab">Avoid</span><span class="mlist">${
+      p.avoid.map(s=>tyPill(s.t)).join('')}</span></div>`:''}
+    ${p.mons.length?`<div class="cnts" style="margin-top:9px">${p.mons.map(c=>
+      `<button class="cnt" data-sp="${esc(c.n)}" style="${tint(c.n)}">${sprite(c.n,44)}
+        <span class="cmain"><b>${esc(c.n)}</b><span class="ctags">
+        <span class="cx">×${c.cov.toFixed(2)} average</span>
+        ${c.back>1.3?'<span class="cback">✕ takes extra back</span>':''}</span></span></button>`).join('')}</div>`:''}
