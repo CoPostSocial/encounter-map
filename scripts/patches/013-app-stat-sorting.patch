@@ -1,0 +1,112 @@
+--- a/build_app.py
++++ b/build_app.py
+@@ -211,6 +211,8 @@
+ .sortbar button{border:1px solid var(--line);background:var(--s2);color:var(--ink2);border-radius:999px;
+   padding:5px 11px;font-size:11.5px;font-weight:700;cursor:pointer}
+ .sortbar button[aria-pressed="true"]{background:var(--acc);color:var(--accInk);border-color:var(--acc)}
++.statsort{padding-top:0}
++.statsort button i{font-style:normal;margin-left:4px;font-size:9px;vertical-align:1px}
+ .chip{border:1px solid var(--line);background:var(--s2);color:var(--ink2);border-radius:999px;
+   padding:4px 10px;font-size:11.5px;font-weight:700;cursor:pointer}
+ /* one scrolling line each, the way a phone app does filters, instead of six
+@@ -834,6 +836,7 @@
+     </div>
+     <div class="pad"><input type="search" id="q" placeholder="Search places…" autocomplete="off"></div>
+     <div class="sortbar" id="sortbar"></div>
++    <div class="sortbar statsort" id="statsort"></div>
+     <div class="chips" id="chips"></div>
+     <div class="list" id="list"></div>
+   </aside>
+@@ -957,7 +960,7 @@
+   const r=rarityOf(name);
+   return `<span class="rar" style="color:${r.col};background:${r.col}22;border-color:${r.col}55">${r.tier}</span>`;
+ }
+-let sortBy='name', zoom=1, showLinks=false, fitCell=34;
++let sortBy='name', statKey=null, statDir=-1, zoom=1, showLinks=false, fitCell=34;
+ let region='hoenn', R, SPRITES, screenId, view='atlas', tab='places', mode='terrain';
+ let selPlace=null, selSpecies=null, selItem=null, query='', typeFilter=null, dTab='enc', focusIn=null;
+ 
+@@ -1905,7 +1908,40 @@
+   const opts=SORTS[tab]||[];
+   el.innerHTML=`<span class="lbl">Sort</span>`+opts.map(([k,l])=>
+     `<button data-sort="${k}" aria-pressed="${sortBy===k}">${l}</button>`).join('');
+-  el.querySelectorAll('[data-sort]').forEach(b=>b.onclick=()=>{sortBy=b.dataset.sort;drawSort();renderList()});
++  el.querySelectorAll('[data-sort]').forEach(b=>b.onclick=()=>{
++    sortBy=b.dataset.sort; statKey=null; drawSort(); renderList()});
++  keepVisible(el);
++  drawStatSort();
++}
++// Base stats get their own line: seven more pills crammed into the sort row
++// reads as noise, and a stat sort wants a direction of its own. First tap is
++// highest first, because "who is the fastest thing here" is the question people
++// actually have; tapping the same stat again flips it.
++const STATSORTS=[['bst','Total'],...STATS];
++function drawStatSort(){
++  const el=document.getElementById('statsort');
++  if(tab!=='mons'){el.innerHTML=''; el.style.display='none'; return}
++  el.style.display='';
++  el.innerHTML=`<span class="lbl">Base stat</span>`+STATSORTS.map(([k,l])=>
++    `<button data-stat="${k}" aria-pressed="${statKey===k}">${l}${
++      statKey===k?`<i>${statDir<0?'▼':'▲'}</i>`:''}</button>`).join('');
++  el.querySelectorAll('[data-stat]').forEach(b=>b.onclick=()=>{
++    const k=b.dataset.stat;
++    if(statKey===k) statDir=-statDir; else {statKey=k; statDir=-1}
++    sortBy='stat'; drawSort(); renderList()});
++  keepVisible(el);
++}
++// These rows scroll sideways on a phone, so a pill picked from the far end
++// would otherwise vanish the moment the row redraws.
++function keepVisible(el){
++  const on=el.querySelector('[aria-pressed="true"]');
++  if(on&&el.scrollWidth>el.clientWidth) on.scrollIntoView({inline:'center',block:'nearest'});
++}
++function statOf(n,k){
++  const m=R.mon[n]; if(!m) return null;
++  if(k==='bst'){ if(m.hp===undefined) return null;
++                 return STATS.reduce((s,[j])=>s+(m[j]||0),0) }
++  return m[k]===undefined?null:m[k];
+ }
+ function drawChips(){
+   const el=document.getElementById('chips');
+@@ -1992,12 +2028,29 @@
+         if(innerWidth<=760) setTimeout(()=>document.getElementById('detail').scrollIntoView({behavior:'smooth',block:'start'}),80);});
+       return;
+     }
+-    if(sortBy==='rare') names.sort((a,b)=>rarityOf(a).best-rarityOf(b).best||a.localeCompare(b));
++    if(sortBy==='stat'&&statKey){
++      // A species with no stats in the table cannot be ranked, so park it at the
++      // bottom either way round rather than letting it float to the top.
++      names.sort((a,b)=>{const x=statOf(a,statKey), y=statOf(b,statKey);
++        if(x===null&&y===null) return a.localeCompare(b);
++        if(x===null) return 1; if(y===null) return -1;
++        return (y-x)*(statDir<0?1:-1)||a.localeCompare(b)});
++    }
++    else if(sortBy==='rare') names.sort((a,b)=>rarityOf(a).best-rarityOf(b).best||a.localeCompare(b));
+     else if(sortBy==='common') names.sort((a,b)=>rarityOf(b).best-rarityOf(a).best||a.localeCompare(b));
+     else if(sortBy==='spread') names.sort((a,b)=>rarityOf(b).n-rarityOf(a).n||a.localeCompare(b));
+     else names.sort((a,b)=>a.localeCompare(b));
++    // When the list is ranked on a stat, show that stat on the card — otherwise
++    // you are looking at encounter rates while sorting by Speed.
++    const statLabel=n=>{
++      const v=statOf(n,statKey); if(v===null) return 'No stats on record';
++      const lbl=(STATSORTS.find(s=>s[0]===statKey)||[])[1];
++      const p=statPct(R.rank[statKey],v);
++      return `${lbl} ${v} · beats ${p}%`;
++    };
+     html=names.length?`<div class="dexgrid">${names.map(n=>{const r=rarityOf(n);
+-      return dexCard(n, r.n?`${r.best%1?r.best.toFixed(1):r.best}% · ${r.n} spot${r.n===1?'':'s'}`
++      return dexCard(n, sortBy==='stat'&&statKey ? statLabel(n)
++                      : r.n?`${r.best%1?r.best.toFixed(1):r.best}% · ${r.n} spot${r.n===1?'':'s'}`
+                         :(R.species[n]||[]).some(x=>x.k)?GOTNAME[(R.species[n].find(x=>x.k)||{}).k]||'Special':'Special')
+       }).join('')}</div>`
+       :'<div class="empty">Nothing matches.</div>';
+@@ -2042,7 +2095,8 @@
+   drawNav();
+   const qi=document.getElementById('q');
+   qi.placeholder=t==='places'?'Search places…':t==='mons'?'Search Pokémon…':'Search items…';
+-  qi.value=''; query=''; sortBy='name'; drawSort(); drawChips(); renderList();
++  qi.value=''; query=''; sortBy='name'; statKey=null; statDir=-1;
++  drawSort(); drawChips(); renderList();
+ }
+ 
+ /* ---------------- guide ---------------- */
