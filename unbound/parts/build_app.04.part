@@ -1,3 +1,29 @@
+        <td><span class="cat ${r.c}">${r.c.slice(0,4)}</span></td>
+        <td>${r.p}</td><td>${r.a||'—'}</td><td class="mut">${r.how}</td>
+        <td><b>${r.val}</b></td></tr>`).join('')}
+    </tbody></table></div></div>`;
+}
+
+/* ---------------- evolution ---------------- */
+function evoSection(name){
+  const m=M[name]||{}, evo=m.evo||[], forms=m.forms||[];
+  if(!evo.length&&!forms.length) return '';
+  const chip=(txt,to)=>`<button class="mon" data-sp="${esc(to)}" style="${tint(to)}">
+      ${sprite(to,44)}<div class="who"><b>${esc(to)}</b>
+      <span class="mut" style="font-size:11.5px">${esc(txt)}</span></div></button>`;
+  return `<div class="sec"><div class="sechd"><h3>Evolution and forms</h3></div><div class="mons">
+    ${evo.map(s=>{const i=s.lastIndexOf('→');const to=s.slice(i+1).trim();
+      return SPR.index[to]!==undefined?chip(s.slice(0,i).trim(),to):''}).join('')}
+    ${forms.map(f=>SPR.index[f.to]!==undefined?chip(f.how,f.to):'').join('')}
+  </div></div>`;
+}
+
+/* ---------------- species panel ---------------- */
+function speciesPanel(name){
+  const m=M[name]||{}, rl=role(name), where=WHERE[name]||[];
+  const gender = typeof m.gender==='number'
+    ? `${(100-m.gender).toFixed(m.gender%1?1:0)}% M / ${m.gender}% F` : (m.gender||'—');
+  const facts=[
     ['Catch rate', m.catch!==undefined?`${m.catch} / 255${m.catch>=200?' — easy':m.catch<=45?' — tough':''}`:'—'],
     ['Abilities', (m.abil||[]).join(' / ')||'—'],
     ['Hidden ability', m.ha||'—'],
@@ -81,6 +107,11 @@ function drawDex(reset){
     metaFn=n=>{const v=statOf(n,statKey);
       return v===null?'No stats':`${lbl} ${v} · beats ${statPct(RANK[statKey],v)}%`};
   }
+  else if(sortBy==='story'){
+    names.sort((a,b)=>storyLv(a)-storyLv(b)||a.localeCompare(b));
+    metaFn=n=>{const l=storyLv(n);
+      return l===999?(WHERE[n]?'Level not documented':'Not wild'):`Lv ${l} · ${stageLabel(l)}`};
+  }
   else if(sortBy==='borrius') names.sort((a,b)=>((M[a].rdex||9999)-(M[b].rdex||9999))||a.localeCompare(b));
   else if(sortBy==='dex') names.sort((a,b)=>((M[a].dex||9999)-(M[b].dex||9999))||a.localeCompare(b));
   else if(sortBy==='common') names.sort((a,b)=>((WHERE[b]||[{pct:0}])[0].pct)-((WHERE[a]||[{pct:0}])[0].pct)||a.localeCompare(b));
@@ -123,47 +154,9 @@ function moreDex(){
   }
 }
 let dexObs=null;
-const SORTS=[['name','A–Z'],['borrius','Borrius dex'],['dex','National dex'],
-             ['common','Easiest to find'],['rare','Rarest first']];
+const SORTS=[['name','A–Z'],['story','Story order'],['borrius','Borrius dex'],
+             ['dex','National dex'],['common','Easiest to find'],['rare','Rarest first']];
 function drawSort(){
   const el=document.getElementById('sortbar');
   el.innerHTML='<span class="lbl">Sort</span>'+SORTS.map(([k,l])=>
     `<button data-sort="${k}" aria-pressed="${sortBy===k}">${l}</button>`).join('');
-  el.querySelectorAll('[data-sort]').forEach(b=>b.onclick=()=>{
-    sortBy=b.dataset.sort;statKey=null;drawSort();drawStatSort();drawDex()});
-  keepVisible(el);
-}
-function drawStatSort(){
-  const el=document.getElementById('statsort');
-  el.innerHTML='<span class="lbl">Base stat</span>'+STATSORTS.map(([k,l])=>
-    `<button data-stat="${k}" aria-pressed="${statKey===k}">${l}${
-      statKey===k?`<i>${statDir<0?'▼':'▲'}</i>`:''}</button>`).join('');
-  el.querySelectorAll('[data-stat]').forEach(b=>b.onclick=()=>{
-    const k=b.dataset.stat;
-    if(statKey===k) statDir=-statDir; else {statKey=k;statDir=-1}
-    sortBy='stat';drawSort();drawStatSort();drawDex()});
-  keepVisible(el);
-}
-function keepVisible(el){
-  const on=el.querySelector('[aria-pressed="true"]');
-  if(on&&el.scrollWidth>el.clientWidth) on.scrollIntoView({inline:'center',block:'nearest'});
-}
-function activeF(){
-  const out=[];
-  if(F.wild) out.push('in the wild');
-  if(F.nomega) out.push('no Megas');
-  if(F.borrius) out.push('Borrius dex');
-  if(F.place) out.push(F.place);
-  if(F.sKey&&F.sMin){
-    const l=(STATSORTS.find(x=>x[0]===F.sKey)||['','stat'])[1];
-    out.push(`${l} ≥ ${F.sMin}`);
-  }
-  return out;
-}
-function drawFilters(){
-  const el=document.getElementById('filters');
-  const opts=D.maps.map(m=>m.name).sort();
-  el.innerHTML=`
-    <span class="lbl">Only</span>
-    <button class="chip" data-f="wild" aria-pressed="${F.wild}">In the wild</button>
-    <button class="chip" data-f="nomega" aria-pressed="${F.nomega}">Hide Megas</button>
