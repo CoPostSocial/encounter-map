@@ -1,0 +1,154 @@
+    d.dataset.bound=1; d.addEventListener('toggle',()=>{if(d.open) fillPlan(d)});
+  });
+  document.querySelectorAll('[data-sp]').forEach(b=>b.onclick=()=>selectSpecies(b.dataset.sp));
+  document.querySelectorAll('[data-loc]').forEach(b=>b.onclick=()=>selectLoc(b.dataset.loc));
+  document.querySelectorAll('[data-ask]').forEach(b=>b.onclick=()=>{
+    const i=document.getElementById('askq');
+    if(i){i.value=b.dataset.ask;i.dispatchEvent(new Event('input'))}});
+}
+function writeHash(){
+  let h='#/'+view;
+  if(view==='dex'&&selSpecies) h+='/'+encodeURIComponent(selSpecies);
+  if(view==='locs'&&selLoc) h+='/'+encodeURIComponent(selLoc);
+  history.replaceState(null,'',h);
+}
+function readHash(){
+  const p=location.hash.replace(/^#\//,'').split('/');
+  if(!p[0]||!VIEWS.includes(p[0])) return false;
+  setView(p[0]);
+  if(p[1]){const v=decodeURIComponent(p[1]);
+    if(p[0]==='dex') selectSpecies(v); else if(p[0]==='locs') selectLoc(v)}
+  return true;
+}
+
+let qTimer=null;
+document.getElementById('q').oninput=e=>{
+  query=e.target.value;
+  clearTimeout(qTimer);
+  qTimer=setTimeout(()=>{
+    if(view==='dex') drawDex(); else if(view==='locs') drawLocs();
+    else if(view==='bosses') drawBosses(); else if(view==='raids') drawRaids();
+  },120);
+};
+document.getElementById('viewswitch').onclick=e=>{
+  const b=e.target.closest('[data-view]'); if(b) setView(b.dataset.view)};
+document.getElementById('mobbar').onclick=e=>{
+  const b=e.target.closest('[data-view]'); if(b){setView(b.dataset.view);scrollTo({top:0,behavior:'smooth'})}};
+addEventListener('hashchange',readHash);
+
+document.documentElement.style.setProperty('--sheet','url("'+SPR.uri+'")');
+document.documentElement.style.setProperty('--sheetw',(SPR.cols*64)+'px');
+document.documentElement.style.setProperty('--sheeth',(SPR.rows*64)+'px');
+drawSort(); drawStatSort(); drawFilters(); drawChips();
+if(!readHash()) setView('ask');
+"""
+
+ICONS = {
+    'dex': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h6M15 12h6"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/></svg>',
+    'locs': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11z"/><circle cx="12" cy="10" r="2.6"/></svg>',
+    'bosses': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 3.5 20 9l-9.5 9.5L5 13z"/><path d="m4 20 3-3M18 4h2v2"/></svg>',
+    'raids': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 2.5 14.6 9H21l-5.2 4 2 6.8L12 16l-5.8 3.8 2-6.8L3 9h6.4z"/></svg>',
+    'tips': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.5.4.8 1 .8 1.6V16h5.4v-.5c0-.6.3-1.2.8-1.6A6 6 0 0 0 12 3z"/></svg>',
+    'ask': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-8 8H8l-5 3 1.4-4.2A8 8 0 1 1 21 12z"/><path d="M9.4 9.6a2.6 2.6 0 1 1 3.4 2.5c-.5.2-.8.6-.8 1.1v.4"/><path d="M12 16.6v.5"/></svg>',
+    'about': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.6v.6"/></svg>',
+}
+LABEL = {'ask': 'Ask', 'dex': 'Pokédex', 'locs': 'Places', 'bosses': 'Bosses',
+         'raids': 'Raids', 'tips': 'Tips', 'about': 'Sources'}
+
+nav_desktop = ''.join(
+    f'<button data-view="{k}" aria-pressed="{str(k == "ask").lower()}">{LABEL[k]}</button>'
+    for k in ['ask', 'dex', 'locs', 'bosses', 'raids', 'tips', 'about'])
+nav_mobile = ''.join(
+    f'<button data-view="{k}" aria-selected="{str(k == "ask").lower()}">{ICONS[k]}<span>{LABEL[k]}</span></button>'
+    for k in ['ask', 'dex', 'locs', 'bosses', 'raids', 'tips'])
+
+HTML = f"""<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Unbound Atlas — Pokémon Unbound 2.1.1.1</title>
+<meta name="description" content="Pokédex, wild encounters, raids, bosses and type matchups for Pokémon Unbound 2.1.1.1, generated from the game's published data.">
+<style>{CSS}</style>
+</head><body>
+<header>
+  <div class="logo">U</div>
+  <div><h1>Unbound Atlas</h1><div class="sub">Pokémon Unbound 2.1.1.1 · Borrius</div></div>
+  <div class="grow"></div>
+  <div class="seg" id="viewswitch">{nav_desktop}</div>
+</header>
+
+<div class="wrap">
+  <section class="card" id="searchwrap">
+    <div class="pad"><input type="search" id="q" placeholder="Search Pokémon…" autocomplete="off"></div>
+    <div id="dexfilters">
+      <div class="sortbar" id="sortbar"></div>
+      <div class="sortbar statsort" id="statsort"></div>
+      <div class="sortbar filters" id="filters"></div>
+      <div class="sortbar fsummary" id="fsummary" style="display:none"></div>
+      <div class="chips" id="chips"></div>
+    </div>
+  </section>
+
+  <div id="dexview">
+    <section class="card" style="margin-bottom:16px">
+      <div class="pad" style="padding-bottom:6px"><div class="sechd">
+        <h3>Pokédex</h3><span class="mut" style="font-size:11.5px" id="dexcount"></span></div></div>
+      <div id="dexlist"></div>
+    </section>
+    <div id="dexpanel"></div>
+  </div>
+
+  <div id="locsview" style="display:none">
+    <section class="card" style="margin-bottom:16px">
+      <div class="pad" style="padding-bottom:6px"><div class="sechd">
+        <h3>Places</h3><span class="mut" style="font-size:11.5px" id="loccount"></span></div></div>
+      <div class="note">Unbound publishes no map data — no layouts, coordinates or connections — so there is no
+        map here. These are its {len(WORLD['maps'])} encounter areas as a list. Tap one for its full table.</div>
+      <div id="loclist"></div>
+    </section>
+    <div id="locpanel"></div>
+  </div>
+
+  <div id="bossesview" style="display:none"><div id="bosslist"></div></div>
+  <div id="raidsview" style="display:none"><div id="raidlist"></div></div>
+  <div id="tipsview" style="display:none"><div id="tipslist"></div></div>
+  <div id="askview" style="display:none"><div id="askbody"></div></div>
+  <div id="aboutview" style="display:none"><div id="aboutbody"></div></div>
+</div>
+
+<nav class="mobbar" id="mobbar">{nav_mobile}</nav>
+
+<footer>
+  Built from Pokémon Unbound's published data — see <b>Sources</b> for exactly which parts come from the
+  author and which from the community. Not affiliated with Skeli789, Nintendo, Game Freak or
+  The Pokémon Company.
+</footer>
+
+<script type="application/json" id="data">__DATA__</script>
+<script>{JS}</script>
+</body></html>
+"""
+
+def emit(pl, sheet_href):
+    pl = dict(pl, sprites=dict(pl['sprites'], uri=sheet_href))
+    return HTML.replace('__DATA__', json.dumps(pl, separators=(',', ':'))
+                        .replace('<', '\\u003c').replace('>', '\\u003e'))
+
+# Single file for downloading: the sheet stays inline so it works with no network.
+path = os.path.join(HERE, 'unbound-atlas.html')
+open(path, 'w').write(emit(payload, SPRITES['uri']))
+
+# Web build: the sheet is a separate PNG the browser caches, which takes ~950 KB
+# of base64 out of the HTML and lets the page paint before the art arrives.
+import base64 as _b64
+web = os.path.join(HERE, 'public')
+os.makedirs(web, exist_ok=True)
+open(os.path.join(web, 'sprites.png'), 'wb').write(
+    _b64.b64decode(SPRITES['uri'].split(',', 1)[1]))
+open(os.path.join(web, 'index.html'), 'w').write(emit(payload, 'sprites.png'))
+print('web build:',
+      os.path.getsize(os.path.join(web, 'index.html')) // 1024, 'KB html +',
+      os.path.getsize(os.path.join(web, 'sprites.png')) // 1024, 'KB png')
+print(f'written {os.path.getsize(path)//1024} KB | species={len(mon)} '
+      f'maps={len(WORLD["maps"])} bosses={len(WORLD["bosses"])} '
+      f'raids={len(WORLD["raids"])} moves={len(MVL)} types={len(TYPES)}')
