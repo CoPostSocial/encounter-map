@@ -14,7 +14,7 @@ app says so. Nothing here comes from the author:
     Unbound-specific data sitting behind #ifdef UNBOUND.
   * Trainers come from a community transcription of the Trainers Doc.
 """
-import json, os, re, collections
+import json, os, re, collections, unicodedata
 import os
 ROOT = os.environ.get('UBROOT', '/home/claude/unbound')
 
@@ -204,4 +204,3 @@ def build_trainers():
     """Vanilla first, as asked. But Vanilla is only documented for the eight gym
     leaders -- the Elite Four, the rivals and the villain bosses exist in the
     source spreadsheets only on the harder difficulties. Rather than ship a
-    Bosses tab with no champion in it, fall back to the lowest documented
