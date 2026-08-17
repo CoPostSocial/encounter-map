@@ -32,7 +32,7 @@ pip install --quiet --disable-pip-version-check Pillow
 say "python $(python3 -V 2>&1) pillow ok"
 
 # ---- reassemble the build scripts ------------------------------------------
-# The pipeline is ~120 KB of Python and the file API this repo is written
+# The pipeline is ~125 KB of Python and the file API this repo is written
 # through truncates large writes silently -- a 14 KB push arrived as 5.5 KB
 # once. So each script ships as ordered <8.6 KB parts and is checksummed after
 # reassembly. A short read now fails the build instead of producing a subtly
@@ -49,9 +49,9 @@ check_script() { # name expected-sha256
 }
 check_script build_species 6b218da8741219c2ebf0b71148caa2852dcbb88eae9493a0797da1ecf5f53e90
 check_script build_battle  35cf42c0bb78177f36f3768653cbb098e4f7ad965a4cf785648609f1ac4e85e7
-check_script build_world   78f7aae2ac73451a00ae4d168ee494f50a12334d6474f063bc781e5f38b7e974
+check_script build_world   79b1e4d206879868d32fa5d1b874bab359ffd9923b88dd2890c4f182b27e273a
 check_script build_sprites bab889315631643edcc6ed89e5b6e182ad5795917c764a5385b6f9813bc3b5de
-check_script build_app     6399251d02ad843a6d9a232b776c39ee2fe978834b42adfd15d90161d2a2c636
+check_script build_app     1f36455fa8e4f3a847289e9cf537ea11ab7ef58134813bff0c6bc398fb4813bd
 
 # ---- pinned sources --------------------------------------------------------
 # The author's species tables. Cloned rather than fetched file by file because
