@@ -1,0 +1,164 @@
+    <div class="mut" style="font-size:11px;margin-top:9px">Counters are wild-obtainable Pokémon whose own types
+      cover the party, filtered to what turns up at or below this fight's level.${
+      p.known<p.total?` ${p.total-p.known} of this party could not be matched to a species and was left out of the maths.`:''}</div>
+  </div></details>`;
+}
+function drawBosses(){
+  const q=query.toLowerCase();
+  const list=D.bosses.filter(b=>!q||b.n.toLowerCase().includes(q)||b.w.toLowerCase().includes(q)
+    ||b.p.some(p=>p.s.toLowerCase().includes(q)));
+  const nv=D.bosses.filter(b=>b.mode==='Vanilla').length;
+  document.getElementById('bosslist').innerHTML=`
+    <div class="card"><div class="ghd"><h2>Every big fight</h2>
+      <p class="mut" style="margin-top:8px;font-size:14px;max-width:72ch">${D.bosses.length} boss battles
+      with full parties. Only ${nv} are documented on Vanilla — the eight gym leaders. The Elite Four, the
+      rivals and the team bosses exist in the source spreadsheets only on the harder difficulties, so those
+      cards show the lowest documented one and say which.</p></div>
+    <div class="gsec"><div class="bosslist" id="bosslistgrid"></div>
+      <div id="bossmore"></div></div>
+    </div>`;
+  bossRows=list; bossShown=0; moreBosses();
+}
+const BPAGE=12;
+let bossRows=[], bossShown=0, bossObs=null;
+function moreBosses(){
+  const grid=document.getElementById('bosslistgrid'); if(!grid) return;
+  const next=bossRows.slice(bossShown,bossShown+BPAGE);
+  if(!next.length&&!bossShown){grid.innerHTML='<div class="empty">No match.</div>';return}
+  grid.insertAdjacentHTML('beforeend',next.map(bossCard).join(''));
+  bossShown+=next.length;
+  const more=document.getElementById('bossmore');
+  more.innerHTML=bossShown<bossRows.length
+    ? `<button class="btnlink" id="bossmorebtn">Show more — ${bossRows.length-bossShown} left</button>`:'';
+  const bm=document.getElementById('bossmorebtn');
+  if(bm){
+    bm.onclick=moreBosses;
+    if(bossObs) bossObs.disconnect();
+    bossObs=new IntersectionObserver(es=>{if(es.some(x=>x.isIntersecting)) moreBosses()},
+      {rootMargin:'500px'});
+    bossObs.observe(bm);
+  }
+  wire();
+}
+function bossCard(b){
+  return `<div class="boss">
+    <div class="bhd"><span class="blv">Lv ${b.lv}</span><b>${esc(b.n)}</b>
+      <span class="bcls">${esc(b.c)}</span>
+      ${b.mode!=='Vanilla'?`<span class="bmode">${esc(b.mode)} roster</span>`:''}
+      ${b.dbl?'<span class="bmode">Double</span>':''}
+      ${b.spec?`<span class="bmode">${esc(b.spec)}</span>`:''}</div>
+    ${b.w?`<div class="mut" style="font-size:12px;margin-bottom:9px;font-weight:700">● ${esc(b.w)}</div>`:''}
+    <div class="party">${b.p.map(p=>`<button class="pm" ${M[p.s]?`data-sp="${esc(p.s)}"`:''}>
+      ${sprite(p.s,48)}<span>${esc(p.s)}</span><i>Lv${p.l}</i>
+      ${p.i?`<em>${esc(p.i)}</em>`:''}
+      ${p.ab?`<u>${esc(p.ab)}</u>`:''}
+      ${p.m&&p.m.length?`<u>${p.m.map(esc).join(' · ')}</u>`:''}</button>`).join('')}</div>
+    ${planBlock(b.p,b.lv)}</div>`;
+}
+
+/* ---------------- raids ---------------- */
+function drawRaids(){
+  const q=query.toLowerCase();
+  const list=D.raids.filter(r=>!q||r.n.toLowerCase().includes(q)
+    ||r.p.some(s=>s.toLowerCase().includes(q)));
+  document.getElementById('raidlist').innerHTML=`
+    <div class="card"><div class="ghd"><h2>Raid dens</h2>
+      <p class="mut" style="margin-top:8px;font-size:14px;max-width:72ch">${D.raids.length} dens across Borrius,
+      read straight out of the engine's own <code>raid_encounters.h</code>. Star rating is in the den name.</p></div>
+    <div id="raidgrid"></div><div id="raidmore"></div></div>`;
+  raidRows=list; raidShown=0; moreRaids();
+}
+// 105 dens is 999 sprites; painting them in one go blocked a throttled phone for
+// twenty-two seconds. Same fix as the Pokedex: a screenful at a time.
+const RPAGE=10;
+let raidRows=[], raidShown=0, raidObs=null;
+function moreRaids(){
+  const grid=document.getElementById('raidgrid'); if(!grid) return;
+  const next=raidRows.slice(raidShown,raidShown+RPAGE);
+  if(!next.length&&!raidShown){grid.innerHTML='<div class="empty">No den matches.</div>';return}
+  grid.insertAdjacentHTML('beforeend',next.map(r=>`<div class="sec den">
+    <div class="sechd"><h3>${esc(r.n)}</h3>
+      <span class="mut" style="font-size:11.5px">${r.p.length} possible</span></div>
+    <div class="party">${r.p.map(sp=>`<button class="pm" ${M[sp]?`data-sp="${esc(sp)}"`:''}>
+      ${sprite(sp,48)}<span>${esc(sp)}</span></button>`).join('')}</div></div>`).join(''));
+  raidShown+=next.length;
+  const more=document.getElementById('raidmore');
+  more.innerHTML=raidShown<raidRows.length
+    ? `<button class="btnlink" id="raidmorebtn" style="margin:14px 18px">Show more — ${
+        raidRows.length-raidShown} dens left</button>`:'';
+  const rm=document.getElementById('raidmorebtn');
+  if(rm){
+    rm.onclick=moreRaids;
+    if(raidObs) raidObs.disconnect();
+    raidObs=new IntersectionObserver(es=>{if(es.some(x=>x.isIntersecting)) moreRaids()},
+      {rootMargin:'500px'});
+    raidObs.observe(rm);
+  }
+  wire();
+}
+
+/* ---------------- tips ---------------- */
+function hmTable(){
+  const hms=D.machines.map((m,i)=>({...m,i})).filter(m=>m.hm);
+  const rows=[];
+  for(const n in M){
+    const m=M[n]; if(!m.tm||!obtainable(n)) continue;
+    const got=hms.filter(h=>knowsTM(n,h.i));
+    if(got.length<2) continue;
+    rows.push({n,got,c:got.length,bst:m.bst||0});
+  }
+  rows.sort((a,b)=>b.c-a.c||b.bst-a.bst||a.n.localeCompare(b.n));
+  return {hms,rows};
+}
+function buildTeam(){
+  const {hms}=hmTable();
+  const pool=Object.keys(M).filter(n=>M[n].hp!==undefined&&obtainable(n));
+  const team=[],haveT=new Set(),haveH=new Set();
+  while(team.length<6){
+    let best=null;
+    for(const n of pool){
+      if(team.some(t=>t.n===n)) continue;
+      const m=M[n],ts=types(n);
+      const hs=hms.filter(h=>knowsTM(n,h.i)).map(h=>h.n);
+      const newT=ts.filter(t=>!haveT.has(t)).length;
+      const newH=hs.filter(h=>!haveH.has(h)).length;
+      const use=Math.round((Math.max(statPct(RANK.atk,m.atk||0),statPct(RANK.spa,m.spa||0))
+                            +statPct(RANK.spe,m.spe||0))/2);
+      const sc=newT*3+newH*2+use/30;
+      if(!best||sc>best.sc) best={n,sc,newT,newH,ts,hs,use,bst:m.bst||0};
+    }
+    if(!best) break;
+    best.ts.forEach(t=>haveT.add(t)); best.hs.forEach(h=>haveH.add(h));
+    team.push(best);
+  }
+  return {team,types:haveT,hms:haveH,allHM:hms};
+}
+function drawTips(){
+  const {hms,rows}=hmTable();
+  const t=buildTeam();
+  const T=TCH.names;
+  document.getElementById('tipslist').innerHTML=`
+    <div class="card"><div class="ghd"><h2>Every type matchup</h2>
+      <p class="mut" style="margin-top:8px;font-size:14px;max-width:72ch">Unbound uses the Gen VI chart, not
+      Gen III's — Fairy exists, Steel no longer resists Ghost or Dark, and Dragon does nothing to Fairy.
+      Attacking type down the left, defending across the top. Blank is normal damage.</p></div>
+      <div class="gsec"><div class="tcwrap"><table class="tcgrid"><thead><tr><th></th>
+        ${T.map(d=>`<th>${d}</th>`).join('')}</tr></thead><tbody>
+        ${T.map(a=>`<tr><th>${a}</th>${T.map(d=>{const v=(TCH.chart[a]||{})[d],m=v===undefined?10:v;
+          return `<td class="v${m}" title="${a} → ${d}: ×${m/10}">${
+            m===20?'2':m===5?'½':m===0?'0':''}</td>`}).join('')}</tr>`).join('')}
+      </tbody></table></div>
+      <div class="tclegend"><span><i style="background:#e8348a"></i>Super effective ×2</span>
+        <span><i style="background:#1587e8"></i>Not very effective ×½</span>
+        <span><i style="background:#33415a"></i>No effect</span>
+        <span><i style="background:var(--s2)"></i>Normal ×1</span></div></div></div>
+
+    <div class="card"><div class="ghd"><h2>A team that covers the game</h2>
+      <p class="mut" style="margin-top:8px;font-size:14px;max-width:72ch">Picked six times over: whichever
+      wild-obtainable Pokémon adds the most — a type nobody has yet, then an HM nobody can carry yet,
+      then attacking power and speed as the tiebreak. A starting point, not gospel.</p></div>
+      <div class="gsec"><div class="bosslist">${t.team.map((x,i)=>`<div class="boss" style="${tint(x.n)}">
+        <div class="bhd"><span class="blv">${i+1}</span><b>${esc(x.n)}</b>${badges(x.n)}</div>
+        <div class="party"><button class="pm" data-sp="${esc(x.n)}">${sprite(x.n,60)}
+          <span>${esc(x.n)}</span><i>BST ${x.bst}</i></button></div>
+        <div class="mut" style="font-size:11.5px;margin-top:8px">brings ${x.ts.join('/')}${
