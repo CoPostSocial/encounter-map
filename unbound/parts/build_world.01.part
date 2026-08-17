@@ -1,0 +1,64 @@
+    difficulty for those and label which one is being shown."""
+    p = os.path.join(SRC, 'fg/data/battle-data.json')
+    d = json.load(open(p))
+    by_key = collections.defaultdict(dict)
+    plain = []
+    for b in d['battles']:
+        if not b.get('team'):
+            continue
+        mode = b.get('mode') or 'Vanilla'
+        if b['category'] in BOSSY or b.get('boss'):
+            by_key[(b['trainer'], b['location'], b['category'],
+                    b.get('variant') or '')][mode] = b
+        elif mode == 'Vanilla':
+            plain.append(b)
+
+    PREF = ['Vanilla', 'Difficult', 'Expert', 'Insane']
+    bosses = []
+    for key, modes in by_key.items():
+        pick = next((m for m in PREF if m in modes), None)
+        if not pick:
+            continue
+        b = modes[pick]
+        bosses.append({
+            'n': b['trainer'], 'c': b['category'], 'w': b.get('location') or '',
+            'mode': pick, 'alt': sorted(modes),
+            'lv': b.get('levelMax') or 0, 'dbl': bool(b.get('doubleBattle')),
+            'spec': b.get('specialty') or '', 'badge': b.get('badge') or '',
+            'p': [{'s': t['name'], 'l': t.get('level') or 0,
+                   'ab': t.get('ability') or '', 'i': t.get('heldItem') or '',
+                   'm': [x for x in (t.get('moves') or []) if x]}
+                  for t in b['team']],
+        })
+    bosses.sort(key=lambda b: (b['lv'], b['n']))
+
+    trainers = []
+    for b in plain:
+        trainers.append({'n': b['trainer'], 'c': b['category'],
+                         'w': b.get('location') or '', 'lv': b.get('levelMax') or 0,
+                         'p': [{'s': t['name'], 'l': t.get('level') or 0}
+                               for t in b['team']]})
+    return bosses, trainers, d['meta']
+
+
+maps = build_encounters()
+fixed, still = resolve_names(maps)
+maps.sort(key=lambda m: m['name'])
+raids = build_raids()
+specials = build_specials()
+bosses, trainers, tmeta = build_trainers()
+
+json.dump({'maps': maps, 'raids': raids, 'specials': specials,
+           'bosses': bosses, 'trainers': trainers},
+          open(os.path.join(OUT, 'world.json'), 'w'))
+
+nslot = sum(len(b['rows']) for m in maps for b in m['methods'].values())
+print(f'maps={len(maps)} rows={nslot} namesRecovered={fixed} stillUnnamed={still}')
+print(f'raid dens={len(raids)} raid species={sum(len(r["p"]) for r in raids)}')
+print(f'bosses={len(bosses)} regular trainers={len(trainers)}')
+print('boss modes:', dict(collections.Counter(b['mode'] for b in bosses)))
+print('boss categories:', dict(collections.Counter(b['c'] for b in bosses)))
+print('specials:', {k: len(v) for k, v in specials.items()})
+ex = next((m for m in maps if 'Antisis City' == m['name']), maps[0])
+print('sample', ex['name'], {k: v['rows'][:2] for k, v in list(ex['methods'].items())[:2]})
+print('size KB:', os.path.getsize(os.path.join(OUT, 'world.json')) // 1024)
