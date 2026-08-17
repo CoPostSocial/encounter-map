@@ -1,0 +1,207 @@
+"""Where things are, for Unbound.
+
+This half of the data has a different provenance from the species half and the
+app says so. Nothing here comes from the author:
+
+  * Wild encounters come from ydarissep/Unbound-Pokedex's encounters.json, the
+    only public table carrying levels and slot order. It is undocumented and
+    unversioned, and 43 of its 165 maps are literally named "Unknown".
+  * Those names are recovered by joining against jimineybillybob1's guide, which
+    derives its own location list from the same file and has names for all but
+    one. The join is on the exact ordered species list per method, so it either
+    matches or it doesn't -- no fuzzy guessing.
+  * Raid dens come from CFRU's raid_encounters.h, which is first-party but
+    Unbound-specific data sitting behind #ifdef UNBOUND.
+  * Trainers come from a community transcription of the Trainers Doc.
+"""
+import json, os, re, collections
+import os
+ROOT = os.environ.get('UBROOT', '/home/claude/unbound')
+
+SRC = os.path.join(ROOT, 'src')
+OUT = ROOT
+
+SPECIES = json.load(open(os.path.join(OUT, 'species.json')))['species']
+NAME = {c: d['name'] for c, d in SPECIES.items()}
+
+# CFRU's own slot-rate tables (src/dexnav.c). The fishing table is the three rods
+# laid end to end: Old 2 slots, Good 3, Super 5.
+LAND = [20, 20, 10, 10, 10, 10, 5, 5, 4, 4, 1, 1]
+WATER = [60, 30, 5, 4, 1]
+FISH = [70, 30, 60, 20, 20, 40, 40, 15, 4, 1]
+RODS = [('Old Rod', 0, 2), ('Good Rod', 2, 3), ('Super Rod', 5, 5)]
+
+METHODS = {
+    'grassAnytime': ('grass', 'Tall grass'),
+    'grassDay': ('grass_day', 'Tall grass — day'),
+    'grassNight': ('grass_night', 'Tall grass — night'),
+    'water': ('surf', 'Surfing'),
+    'rockSmash': ('rock_smash', 'Rock Smash'),
+}
+
+
+def pretty_map(raw):
+    s = raw.replace('_', ' ').title()
+    s = re.sub(r'\bB(\d+)F\b', r'B\1F', s, flags=re.I)
+    s = re.sub(r'\b(\d+)F\b', r'\1F', s)
+    return s
+
+
+def slot_rows(slots, rates):
+    """Collapse repeated slots: a species holding four of twelve land slots is
+    one 60% line, not four identical rows."""
+    agg = collections.defaultdict(lambda: {'pct': 0.0, 'min': 99, 'max': 0})
+    for i, s in enumerate(slots):
+        if i >= len(rates):
+            break
+        a = agg[s['species']]
+        a['pct'] += rates[i]
+        a['min'] = min(a['min'], s['minLevel'])
+        a['max'] = max(a['max'], s['maxLevel'])
+    out = []
+    for sp, a in agg.items():
+        out.append({'s': NAME.get(sp, sp[8:].title()), 'c': sp,
+                    'pct': round(a['pct'], 1), 'min': a['min'], 'max': a['max']})
+    out.sort(key=lambda r: -r['pct'])
+    return out
+
+
+def build_encounters():
+    raw = json.load(open(os.path.join(SRC, 'ydex/src/locations/encounters.json')))
+    maps = []
+    for m in raw:
+        methods = {}
+        for key, blk in m['encounters'].items():
+            slots, rate = blk['slots'], blk.get('encounterRate', 0)
+            if key == 'fishing':
+                for label, off, n in RODS:
+                    part = slots[off:off + n]
+                    if not part or all(s['species'] == 'SPECIES_NONE' for s in part):
+                        continue
+                    rows = slot_rows(part, FISH[off:off + n])
+                    if rows:
+                        methods[label.lower().replace(' ', '_')] = {
+                            'label': label, 'rate': rate, 'rows': rows}
+                continue
+            mk = METHODS.get(key)
+            if not mk:
+                continue
+            rates = WATER if key in ('water', 'rockSmash') else LAND
+            rows = slot_rows(slots, rates)
+            if rows:
+                methods[mk[0]] = {'label': mk[1], 'rate': rate, 'rows': rows}
+        if methods:
+            maps.append({'g': m['mapGroup'], 'm': m['mapNum'],
+                         'raw': m['mapName'], 'methods': methods})
+    return maps
+
+
+def resolve_names(maps):
+    """Recover the 43 unnamed maps by joining on encounter content.
+
+    The guide repo derives its own location list from this same JSON and carries
+    names for all but one of them, but it drops levels -- so take its names and
+    keep these levels. Key each method on its ordered species list, which is
+    specific enough that a match is a match."""
+    p = os.path.join(SRC, 'ug/data/unbound-data.json')
+    if not os.path.exists(p):
+        return 0, 0
+    guide = json.load(open(p))['locations']
+    # Match on the map's whole species roster rather than per method: the two
+    # projects label methods differently ("Land" vs "Tall grass") and order
+    # slots differently, but the set of Pokemon on a map is the same set.
+    cands = []
+    for loc in guide:
+        nm = loc.get('name')
+        # the guide lumps everything it could not name into one "Unknown" entry
+        # with a 92-species roster, which would otherwise out-overlap everything
+        if not nm or nm == 'Unknown':
+            continue
+        roster = frozenset(s for meth in loc.get('methods', [])
+                           for s in meth.get('species', []))
+        if len(roster) >= 3:
+            cands.append((nm, roster))
+
+    taken = {pretty_map(m['raw']) for m in maps if m['raw'] != 'Unknown'}
+    fixed, still = 0, 0
+    for mp in maps:
+        if mp['raw'] != 'Unknown':
+            mp['name'] = pretty_map(mp['raw'])
+            continue
+        roster = frozenset(r['s'] for blk in mp['methods'].values() for r in blk['rows'])
+        if len(roster) < 3:
+            scored = []
+        else:
+            # Jaccard rather than an exact set match: the two projects disagree
+            # slightly on slot contents, so an identical area can differ by a
+            # species or two. Demand a clear winner as well as a good one.
+            scored = sorted(((len(roster & r) / len(roster | r), nm)
+                             for nm, r in cands), reverse=True)
+        if scored and scored[0][0] >= 0.45 and (
+                len(scored) == 1 or scored[0][0] - scored[1][0] >= 0.12):
+            mp['name'] = f'{scored[0][1]} — other area'
+            mp['near'] = scored[0][1]
+            mp['inferred'] = round(scored[0][0], 2)
+            fixed += 1
+        else:
+            mp['name'] = f'Unnamed area {mp["g"]}-{mp["m"]}'
+            mp['unnamed'] = 1
+            still += 1
+
+    # Several parents have more than one alternate area; number them so two
+    # different maps never present under one name.
+    dup = collections.Counter(m['name'] for m in maps)
+    seen = collections.Counter()
+    for mp in maps:
+        if dup[mp['name']] > 1:
+            seen[mp['name']] += 1
+            mp['name'] = f'{mp["name"]} {seen[mp["name"]]}'
+    return fixed, still
+
+
+# ---------------------------------------------------------------- raids
+def build_raids():
+    p = os.path.join(SRC, 'cfru/src/Tables/raid_encounters.h')
+    src = open(p, encoding='utf-8', errors='ignore').read()
+    dens = []
+    # The first den in the file is commented out, so skip anything inside /* */.
+    src = re.sub(r'/\*.*?\*/', '', src, flags=re.S)
+    for m in re.finditer(r'static\s+(?:const\s+)?struct\s+Raid\s+(\w+)\[\]\s*=\s*\{(.*?)\n\};', src, re.S):
+        nm, body = m.group(1), m.group(2)
+        mons = []
+        for sm in re.finditer(r'\.species\s*=\s*(SPECIES_\w+)', body):
+            c = sm.group(1)
+            mons.append(NAME.get(c, c[8:].title()))
+        if not mons:
+            continue
+        label = re.sub(r'^s', '', nm)
+        label = re.sub(r'Raids?(\d)Star.*$', r' — \1★', label)
+        label = re.sub(r'(?<=[a-z0-9])(?=[A-Z])', ' ', label)
+        dens.append({'n': label.strip(), 'p': list(dict.fromkeys(mons))})
+    return dens
+
+
+# ---------------------------------------------------------------- gifts, statics, trades
+def build_specials():
+    p = os.path.join(SRC, 'ug/data/unbound-data.json')
+    if not os.path.exists(p):
+        return {}
+    d = json.load(open(p))
+    out = {}
+    for key in ('giftStatic', 'legendary', 'trades', 'swarms', 'gameCorner'):
+        v = d.get(key)
+        if v:
+            out[key] = v
+    return out
+
+
+# ---------------------------------------------------------------- trainers
+BOSSY = ('Gym Leader', 'Rival', 'Pokémon League', 'Other Boss', 'Team Shadow',
+         'Team Light of Ruin', 'Mega Trainer', 'Title Defense', 'Boss Wild Battle')
+
+
+def build_trainers():
+    """Vanilla first, as asked. But Vanilla is only documented for the eight gym
+    leaders -- the Elite Four, the rivals and the villain bosses exist in the
+    source spreadsheets only on the harder difficulties. Rather than ship a
+    Bosses tab with no champion in it, fall back to the lowest documented
