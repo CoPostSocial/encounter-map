@@ -1,0 +1,26 @@
+machines, compat = build_tmhm(species)
+
+for const, d in species.items():
+    if const in learn:
+        d['lv'] = learn[const]
+    if const in compat:
+        d['tm'] = sorted(compat[const])
+    if const in evos:
+        d['evo'] = evos[const]
+    if const in forms:
+        d['forms'] = forms[const]
+
+json.dump({'species': species, 'machines': machines, 'regional': regional},
+          open(os.path.join(OUT, 'species.json'), 'w'))
+
+nolv = [c for c, d in species.items() if 'lv' not in d]
+print(f'species={len(species)} withDex={ndex} borriusDex={len(regional)} '
+      f'evoLines={len(evos)} megaGiga={len(forms)}')
+print(f'learnsets={len(learn)} (missing {len(nolv)}) machines={len(machines)} '
+      f'tmRows={sum(len(v) for v in compat.values())}')
+print('sanity:',
+      {k: {kk: species[k][kk] for kk in ("name", "dex", "bst", "types", "cat")
+           if kk in species[k]}
+       for k in ('SPECIES_BULBASAUR', 'SPECIES_GARCHOMP', 'SPECIES_MIMIKYU')
+       if k in species})
+print('size KB:', os.path.getsize(os.path.join(OUT, 'species.json')) // 1024)
