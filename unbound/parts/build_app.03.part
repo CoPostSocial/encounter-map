@@ -1,0 +1,162 @@
+  const ts=types(n),[r,g,b]=rgb(tcol(n));
+  const c2=ts[1]?rgb(TC[ts[1]]||'#A8A77A'):[r,g,b];
+  return `--g:linear-gradient(145deg,rgba(${r},${g},${b},.52),rgba(${c2[0]},${c2[1]},${c2[2]},.30) 62%,rgba(255,255,255,.55));`;
+}
+function tint(n){
+  const ts=types(n),[r,g,b]=rgb(tcol(n));
+  const c2=ts[1]?rgb(TC[ts[1]]||'#A8A77A'):[r,g,b];
+  return `background:linear-gradient(100deg,rgba(${r},${g},${b},.30),rgba(${c2[0]},${c2[1]},${c2[2]},.14) 48%,transparent 88%);`
+       + `box-shadow:inset 4px 0 0 rgb(${r},${g},${b})`}
+function dexNo(n){const d=(M[n]||{}).dex;return d?'#'+String(d).padStart(3,'0'):''}
+function bstOf(n){return (M[n]||{}).bst||0}
+
+/* stat percentiles across the whole reachable roster */
+const RANK={};
+{
+  const all=Object.values(M).filter(m=>m.hp!==undefined);
+  for(const [k] of STATS) RANK[k]=all.map(m=>m[k]||0).sort((a,b)=>a-b);
+  RANK.bst=all.map(m=>m.bst||0).sort((a,b)=>a-b);
+}
+function statPct(sorted,v){
+  let lo=0,hi=sorted.length;
+  while(lo<hi){const mid=(lo+hi)>>1; if(sorted[mid]<v) lo=mid+1; else hi=mid}
+  return Math.round(lo/sorted.length*100);
+}
+function tier(p){return p>=85?[5,'Outstanding','t5']:p>=65?[4,'Strong','t4']:p>=45?[3,'Average','t3']
+  :p>=25?[2,'Weak','t2']:[1,'Very weak','t1']}
+function role(n){
+  const m=M[n]; if(!m||m.hp===undefined) return null;
+  const p={}; for(const [k] of STATS) p[k]=statPct(RANK[k],m[k]||0);
+  const bulk=Math.round((p.hp+p.def+p.spd)/3);
+  const off=Math.max(p.atk,p.spa), phys=p.atk-p.spa;
+  let text;
+  if(off>=70&&p.spe>=70) text=`Fast ${phys>12?'physical':phys<-12?'special':'mixed'} attacker`;
+  else if(off>=70) text=`Slow but hard-hitting ${phys>12?'physical':phys<-12?'special':'mixed'} attacker`;
+  else if(bulk>=70) text='Built to take hits';
+  else if(p.spe>=70) text='Fast, but does not hit hard';
+  else text='No standout strength';
+  return {p,bulk,text};
+}
+
+/* ---------------- matchups (Gen VI) ---------------- */
+function tmul(a,d){const r=TCH.chart[a];return r&&r[d]!==undefined?r[d]/10:1}
+function vsTypes(a,ts){return ts.reduce((m,t)=>m*tmul(a,t),1)}
+function vsMon(a,n){return vsTypes(a,types(n))}
+function defProfile(n){const o={};for(const t of TCH.names){const m=vsMon(t,n);if(m!==1)(o[m]||=[]).push(t)}return o}
+function offProfile(n){const o={};for(const d of TCH.names){
+  const m=Math.max(...types(n).map(t=>tmul(t,d)));if(m>1)(o[m]||=[]).push(d)}return o}
+
+/* Which Pokemon appear in the wild, which is what makes a counter obtainable. */
+const WILD={}, WHERE={};
+for(const mp of D.maps) for(const k in mp.methods) for(const r of mp.methods[k].rows){
+  WILD[r.s]=(WILD[r.s]||0)+1;
+  (WHERE[r.s]||=[]).push({loc:mp.name,label:mp.methods[k].label,pct:r.pct,min:r.min,max:r.max,
+                          unnamed:mp.unnamed?1:0});
+}
+for(const k in WHERE) WHERE[k].sort((a,b)=>b.pct-a.pct);
+function earliestLv(n){const w=WHERE[n];return w&&w.length?Math.min(...w.map(x=>x.min)):99}
+function obtainable(n){return WILD[n]>0}
+
+function counters(defName,limit){
+  const out=[];
+  for(const n in M){
+    const m=M[n]; if(m.hp===undefined||n===defName||!obtainable(n)) continue;
+    let best=1,bt=null;
+    for(const t of types(n)){const v=vsTypes(t,types(defName)); if(v>best){best=v;bt=t}}
+    if(!bt) continue;
+    const back=Math.max(...types(defName).map(t=>vsMon(t,n)));
+    const off=Math.max(statPct(RANK.atk,m.atk||0),statPct(RANK.spa,m.spa||0));
+    const spe=statPct(RANK.spe,m.spe||0);
+    out.push({n,t:bt,x:best,back,score:best*100+off+spe/2-(back>1?40:0)});
+  }
+  out.sort((a,b)=>b.score-a.score||a.n.localeCompare(b.n));
+  return out.slice(0,limit||6);
+}
+function mulRow(label,cls,list){
+  if(!list||!list.length) return '';
+  return `<div class="mrow ${cls}"><span class="mlab">${label}</span>
+    <span class="mlist">${list.map(t=>tyPill(t)).join('')}</span></div>`;
+}
+function matchupSection(name){
+  const d=defProfile(name),o=offProfile(name),cs=counters(name,6);
+  const any=(d[4]||d[2]||d[0.5]||d[0.25]||d[0]);
+  return `<div class="sec"><div class="sechd"><h3>Matchups</h3>
+    <span class="mut" style="font-size:11.5px">Gen VI chart — 18 types, Fairy included</span></div>
+    <div class="mups">
+      ${mulRow('×4','m4',d[4])}${mulRow('×2','m2',d[2])}
+      ${mulRow('×½','mh',d[0.5])}${mulRow('×¼','mq',d[0.25])}
+      ${mulRow('No effect','m0',d[0])}
+      ${!any?'<div class="mut" style="font-size:12.5px">Nothing hits it for more or less than normal damage.</div>':''}
+    </div>
+    <div class="mups" style="margin-top:10px">
+      ${mulRow('Hits ×2 on','m2',o[2])}${mulRow('And ×4 on','m4',o[4])}
+      ${!(o[2]||[]).length?'<div class="mut" style="font-size:12.5px">Its own types hit nothing for extra damage.</div>':''}
+    </div>
+    ${cs.length?`<div class="sechd" style="margin-top:16px"><h3>What beats it</h3>
+      <span class="mut" style="font-size:11.5px">Wild-obtainable in Unbound</span></div>
+    <div class="mut" style="font-size:11.5px;margin:0 0 10px;max-width:70ch">Ranked on the attack stat they would
+      use and how fast they get to use it. A cross means ${esc(name)} hits back for extra damage too.</div>
+    <div class="cnts">${cs.map(c=>`<button class="cnt" data-sp="${esc(c.n)}" style="${tint(c.n)}">
+      ${sprite(c.n,48)}<span class="cmain"><b>${esc(c.n)}</b><span class="ctags">${tyPill(c.t)}
+      <span class="cx">×${c.x}</span>${c.back>1?`<span class="cback">✕ hits back ×${c.back}</span>`:''}
+      </span></span></button>`).join('')}</div>`:''}
+  </div>`;
+}
+
+/* ---------------- moves ---------------- */
+function movesSection(name){
+  const m=M[name]||{}, lv=m.lv||[];
+  const rows=[];
+  for(const [l,mi] of lv){const d=MVL[mi]; if(d) rows.push({how:'Lv '+l,ord:l,...d,mv:d.n})}
+  let ntm=0;
+  D.machines.forEach((mc,i)=>{
+    if(!knowsTM(name,i)) return;
+    ntm++;
+    const d=MVL[mc.mi]; if(d) rows.push({how:mc.n,ord:200,...d,mv:d.n});
+  });
+  const atk=rows.filter(r=>r.p>0);
+  // STAB where it applies, and the attacking stat the split actually uses --
+  // in Gen VI that is the move's own category, not its type.
+  const scored=atk.map(r=>{
+    const stab=types(name).includes(r.t)?1.5:1;
+    const a=r.c==='Physical'?(m.atk||0):(m.spa||0);
+    return {...r,val:Math.round(r.p*stab*(r.a?Math.min(r.a,100)/100:1)*(a/100))};
+  }).sort((a,b)=>b.val-a.val||b.p-a.p);
+  const seen=new Set(), best=[];
+  for(const r of scored){if(seen.has(r.mv))continue;seen.add(r.mv);best.push(r);if(best.length>=10)break}
+  const status=rows.filter(r=>!r.p).slice(0,0);
+  if(!rows.length) return '';
+  return `<div class="sec"><div class="sechd"><h3>Best attacking moves</h3>
+    <span class="mut" style="font-size:11.5px">${lv.length} by level, ${ntm} machines</span></div>
+    <div class="mut" style="font-size:11.5px;margin-bottom:9px;max-width:72ch">Ranked by base power × accuracy
+    × STAB × the attacking stat the move actually uses. Unbound follows Gen VI, so a move's physical or
+    special category is its own — Crabhammer is physical here, not special as it would be in Gen III.</div>
+    <div class="tcwrap"><table class="mtable"><thead><tr><th>Move</th><th>Type</th><th></th>
+      <th>Pow</th><th>Acc</th><th>From</th><th>Score</th></tr></thead><tbody>
+      ${best.map(r=>`<tr><td class="n">${esc(r.n)}</td><td>${tyPill(r.t)}</td>
+        <td><span class="cat ${r.c}">${r.c.slice(0,4)}</span></td>
+        <td>${r.p}</td><td>${r.a||'—'}</td><td class="mut">${r.how}</td>
+        <td><b>${r.val}</b></td></tr>`).join('')}
+    </tbody></table></div></div>`;
+}
+
+/* ---------------- evolution ---------------- */
+function evoSection(name){
+  const m=M[name]||{}, evo=m.evo||[], forms=m.forms||[];
+  if(!evo.length&&!forms.length) return '';
+  const chip=(txt,to)=>`<button class="mon" data-sp="${esc(to)}" style="${tint(to)}">
+      ${sprite(to,44)}<div class="who"><b>${esc(to)}</b>
+      <span class="mut" style="font-size:11.5px">${esc(txt)}</span></div></button>`;
+  return `<div class="sec"><div class="sechd"><h3>Evolution and forms</h3></div><div class="mons">
+    ${evo.map(s=>{const i=s.lastIndexOf('→');const to=s.slice(i+1).trim();
+      return SPR.index[to]!==undefined?chip(s.slice(0,i).trim(),to):''}).join('')}
+    ${forms.map(f=>SPR.index[f.to]!==undefined?chip(f.how,f.to):'').join('')}
+  </div></div>`;
+}
+
+/* ---------------- species panel ---------------- */
+function speciesPanel(name){
+  const m=M[name]||{}, rl=role(name), where=WHERE[name]||[];
+  const gender = typeof m.gender==='number'
+    ? `${(100-m.gender).toFixed(m.gender%1?1:0)}% M / ${m.gender}% F` : (m.gender||'—');
+  const facts=[
