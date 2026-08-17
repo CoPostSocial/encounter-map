@@ -1,0 +1,215 @@
+"""Species data for Pokemon Unbound 2.1.1.1.
+
+Unbound has no decompilation. The species half of its data is published by the
+author himself in Dynamic-Pokemon-Expansion branch `Unbound`, pinned here at
+commit fe058e0e ("Changes for 2.1.1"), with the battle engine in
+Complete-Fire-Red-Upgrade at b637a278 -- the commit Unbound 2.1.1.1 was built
+from. Both are ordinary C designated-initialiser tables, the same shape as the
+pret decomps, so the same parsing approach carries over.
+"""
+import json, os, re, glob, collections
+import os
+ROOT = os.environ.get('UBROOT', '/home/claude/unbound')
+
+SRC = os.path.join(ROOT, 'src')
+DPE = os.path.join(SRC, 'dpe')
+CFRU = os.path.join(SRC, 'cfru')
+OUT = ROOT
+
+
+def keyed_blocks(src, pattern):
+    """Slice a table on its keys rather than brace-matching.
+
+    Same reason as the Hoenn build: a non-greedy body stops at the first inner
+    '},' and silently drops everything after it, which is how an evolution table
+    loses every branch but the first."""
+    keys = list(re.finditer(pattern, src))
+    for i, m in enumerate(keys):
+        end = keys[i + 1].start() if i + 1 < len(keys) else len(src)
+        yield m.group(1), src[m.end():end]
+
+
+# ---------------------------------------------------------------- names
+def load_string_table(path):
+    """CFRU keeps display names in an assembler string file: a `#org @NAME_X`
+    line, then the text on the next non-blank line."""
+    out = {}
+    key = None
+    for line in open(path, encoding='utf-8', errors='ignore'):
+        line = line.rstrip('\n')
+        m = re.match(r'#org\s+@NAME_(\w+)', line)
+        if m:
+            key = m.group(1)
+            continue
+        if key is not None and line.strip():
+            out[key.replace('_', '')] = line.strip()
+            key = None
+    return out
+
+
+ABILITY_NAMES = load_string_table(os.path.join(CFRU, 'strings/ability_name_table.string'))
+MOVE_NAMES = load_string_table(os.path.join(CFRU, 'strings/attack_name_table.string'))
+
+
+def const_name(const, prefix, table):
+    """ABILITY_SPEED_BOOST -> 'Speed Boost'. The string table and the constant
+    table do not always agree on underscores (MOVE_VINEWHIP vs NAME_VINE_WHIP),
+    so match on the letters alone."""
+    if not const or const.endswith('_NONE'):
+        return ''
+    k = const[len(prefix):].replace('_', '')
+    if k in table:
+        return table[k]
+    return const[len(prefix):].replace('_', ' ').title()
+
+
+def ability_name(c):
+    return const_name(c, 'ABILITY_', ABILITY_NAMES)
+
+
+def move_name(c):
+    return const_name(c, 'MOVE_', MOVE_NAMES)
+
+
+def item_name(c):
+    if not c or c == 'ITEM_NONE':
+        return ''
+    return c[5:].replace('_', ' ').title()
+
+
+# ---------------------------------------------------------------- sprites + display names
+# The sprite filenames carry both the internal index and a readable name --
+# gFrontSprite869VenusaurMega.png -- which is the only place in the published
+# source where a species' display name appears at all. Front_Pic_Table.c ties
+# each SPECIES_ constant to one of those files.
+def build_sprite_index():
+    src = open(os.path.join(DPE, 'src/Front_Pic_Table.c')).read()
+    by_const, files = {}, {}
+    for p in glob.glob(os.path.join(DPE, 'graphics/frontspr/*.png')):
+        b = os.path.basename(p)
+        m = re.match(r'gFrontSprite(\d+)(.*)\.png$', b)
+        if m:
+            files[m.group(1) + m.group(2)] = p
+    for m in re.finditer(r'\[(SPECIES_\w+)\]\s*=\s*\{\s*gFrontSprite(\d+)(\w*?)Tiles', src):
+        const, num, nm = m.group(1), m.group(2), m.group(3)
+        by_const[const] = {'i': int(num), 'raw': nm, 'file': files.get(num + nm)}
+    return by_const
+
+
+def pretty_species(raw, const):
+    """VenusaurMega -> 'Venusaur Mega'; NidoranF -> 'Nidoran F'.
+
+    The sprite filename is CamelCase with no separators, so split on the case
+    boundaries and then repair the handful the game spells oddly."""
+    if not raw:
+        return const[8:].replace('_', ' ').title()
+    s = re.sub(r'(?<=[a-z0-9])(?=[A-Z])', ' ', raw)
+    s = re.sub(r'(?<=[A-Z])(?=[A-Z][a-z])', ' ', s)
+    FIX = {'Nidoran M': 'Nidoran♂', 'Nidoran F': 'Nidoran♀',
+           'Mr Mime': 'Mr. Mime', 'Mime Jr': 'Mime Jr.', 'Ho Oh': 'Ho-Oh',
+           'Porygon Z': 'Porygon-Z', 'Farfetchd': "Farfetch'd",
+           'Sirfetchd': "Sirfetch'd", 'Type Null': 'Type: Null',
+           'Jangmo O': 'Jangmo-o', 'Hakamo O': 'Hakamo-o', 'Kommo O': 'Kommo-o',
+           'Flabebe': 'Flabébé', 'Nidoranm': 'Nidoran♂', 'Nidoranf': 'Nidoran♀'}
+    return FIX.get(s, s)
+
+
+# ---------------------------------------------------------------- base stats
+STATF = {'baseHP': 'hp', 'baseAttack': 'atk', 'baseDefense': 'def',
+         'baseSpAttack': 'spa', 'baseSpDefense': 'spd', 'baseSpeed': 'spe'}
+
+
+def build_base_stats(sprites):
+    src = open(os.path.join(DPE, 'src/Base_Stats.c')).read()
+    out = {}
+    for const, body in keyed_blocks(src, r'\[(SPECIES_\w+)\]\s*=\s*\n?\s*\{'):
+        if const == 'SPECIES_NONE':
+            continue
+        sp = sprites.get(const, {})
+        d = {'const': const, 'i': sp.get('i', 0),
+             'name': pretty_species(sp.get('raw'), const)}
+        for f, short in STATF.items():
+            m = re.search(r'\.%s\s*=\s*(\d+)' % f, body)
+            if m:
+                d[short] = int(m.group(1))
+        t1 = re.search(r'\.type1\s*=\s*(TYPE_\w+)', body)
+        t2 = re.search(r'\.type2\s*=\s*(TYPE_\w+)', body)
+        if t1:
+            a = t1.group(1)[5:].title()
+            b = t2.group(1)[5:].title() if t2 else a
+            d['types'] = [a] if a == b else [a, b]
+        for f, short in (('catchRate', 'catch'), ('expYield', 'exp'),
+                         ('eggCycles', 'cyc'), ('friendship', 'fr')):
+            m = re.search(r'\.%s\s*=\s*(\d+)' % f, body)
+            if m:
+                d[short] = int(m.group(1))
+        ab = [ability_name(x) for x in
+              (re.search(r'\.ability1\s*=\s*(ABILITY_\w+)', body),
+               re.search(r'\.ability2\s*=\s*(ABILITY_\w+)', body))
+              if x for x in [x.group(1)]]
+        ab = [a for a in ab if a]
+        hid = re.search(r'\.hiddenAbility\s*=\s*(ABILITY_\w+)', body)
+        if ab:
+            d['abil'] = list(dict.fromkeys(ab))
+        if hid and ability_name(hid.group(1)):
+            d['ha'] = ability_name(hid.group(1))
+        held = [item_name(m.group(1)) for m in
+                re.finditer(r'\.item[12]\s*=\s*(ITEM_\w+)', body)]
+        held = [h for h in held if h]
+        if held:
+            d['held'] = held
+        eg = [g.group(1)[10:].replace('_', ' ').title() for g in
+              re.finditer(r'\.eggGroup[12]\s*=\s*(EGG_GROUP_\w+)', body)]
+        if eg:
+            d['egg'] = list(dict.fromkeys(eg))
+        gr = re.search(r'\.genderRatio\s*=\s*([^,\n]+)', body)
+        if gr:
+            g = gr.group(1).strip()
+            if 'GENDERLESS' in g:
+                d['gender'] = 'Genderless'
+            elif 'MON_FEMALE' in g:
+                d['gender'] = 'Female only'
+            elif 'MON_MALE' in g or g == '0':
+                d['gender'] = 'Male only'
+            else:
+                p = re.search(r'PERCENT_FEMALE\(([\d.]+)\)', g)
+                if p:
+                    d['gender'] = float(p.group(1))
+        d['bst'] = sum(d.get(s, 0) for s in STATF.values())
+        out[const] = d
+    return out
+
+
+# ---------------------------------------------------------------- dex numbers, category, size
+CHAR = {'_SPACE': ' ', '_PERIOD': '.', '_HYPHEN': '-', '_APOSTROPHE': "'"}
+
+
+def decode_chars(body):
+    """categoryName is a list of character macros: _S, _e, _e, _d, _END."""
+    out = []
+    for tok in re.findall(r'_(\w+)', body):
+        if tok == 'END':
+            break
+        t = '_' + tok
+        if t in CHAR:
+            out.append(CHAR[t])
+        elif len(tok) == 1:
+            out.append(tok)
+    return ''.join(out).strip()
+
+
+def build_dex(species):
+    # SPECIES_ -> NATIONAL_DEX_ constant, then the enum position of that constant
+    s2n = {}
+    for m in re.finditer(r'\[(SPECIES_\w+)\s*-\s*1\]\s*=\s*(NATIONAL_DEX_\w+)',
+                         open(os.path.join(DPE, 'src/Species_To_Pokdex_Table.c')).read()):
+        s2n[m.group(1)] = m.group(2)
+    # These are plain #defines here, not the enum the pret decomps use.
+    order = {}
+    hdr = open(os.path.join(CFRU, 'include/constants/pokedex.h'),
+               encoding='utf-8', errors='ignore').read()
+    for m in re.finditer(r'#define\s+(NATIONAL_DEX_\w+)\s+(\d+)', hdr):
+        order[m.group(1)] = int(m.group(2))
+
+    ent = {}
+    for const, body in keyed_blocks(
