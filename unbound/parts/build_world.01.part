@@ -1,6 +1,15 @@
+    Bosses tab with no champion in it, fall back to the lowest documented
     difficulty for those and label which one is being shown."""
     p = os.path.join(SRC, 'fg/data/battle-data.json')
     d = json.load(open(p))
+
+    def fold(x):
+        """Vega and Véga are one gym leader. The transcription spells the name
+        both ways depending on which difficulty sheet it came off, which
+        otherwise splits her into two bosses and shifts every gym after her."""
+        return ''.join(c for c in unicodedata.normalize('NFKD', x or '')
+                       if not unicodedata.combining(c)).lower().strip()
+
     by_key = collections.defaultdict(dict)
     plain = []
     for b in d['battles']:
@@ -8,7 +17,7 @@
             continue
         mode = b.get('mode') or 'Vanilla'
         if b['category'] in BOSSY or b.get('boss'):
-            by_key[(b['trainer'], b['location'], b['category'],
+            by_key[(fold(b['trainer']), fold(b['location']), b['category'],
                     b.get('variant') or '')][mode] = b
         elif mode == 'Vanilla':
             plain.append(b)
@@ -31,6 +40,12 @@
                   for t in b['team']],
         })
     bosses.sort(key=lambda b: (b['lv'], b['n']))
+    # Number the eight badge gyms in the order you fight them. A badge is the
+    # test: Unbound lists a badge-less Fairy leader among the gym class who is
+    # not one of the eight, and counting her would misnumber everything after.
+    gyms = [b for b in bosses if b['c'] == 'Gym Leader' and b['badge']]
+    for i, b in enumerate(gyms, 1):
+        b['gym'] = i
 
     trainers = []
     for b in plain:
@@ -58,6 +73,7 @@ print(f'raid dens={len(raids)} raid species={sum(len(r["p"]) for r in raids)}')
 print(f'bosses={len(bosses)} regular trainers={len(trainers)}')
 print('boss modes:', dict(collections.Counter(b['mode'] for b in bosses)))
 print('boss categories:', dict(collections.Counter(b['c'] for b in bosses)))
+print('gyms:', [(b['gym'], b['n'], b['badge'], b['lv']) for b in bosses if b.get('gym')])
 print('specials:', {k: len(v) for k, v in specials.items()})
 ex = next((m for m in maps if 'Antisis City' == m['name']), maps[0])
 print('sample', ex['name'], {k: v['rows'][:2] for k, v in list(ex['methods'].items())[:2]})
