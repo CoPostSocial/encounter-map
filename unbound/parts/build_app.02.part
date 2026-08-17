@@ -1,0 +1,151 @@
+.pm:hover{border-color:var(--acc)}
+.pm span{display:block;font-size:11.5px;font-weight:800;margin-top:2px}
+.pm i{font-style:normal;font-size:10.5px;color:var(--ink3);font-weight:800}
+.pm em{display:block;font-style:normal;font-size:9.5px;color:var(--acc2);font-weight:800;margin-top:2px}
+.pm u{display:block;text-decoration:none;font-size:9px;color:var(--ink3);font-weight:700;margin-top:3px;line-height:1.35}
+.plan{margin-top:10px;border:1px solid var(--line);border-radius:12px;background:var(--s1);overflow:hidden}
+.plan summary{cursor:pointer;padding:10px 13px;font-size:12.5px;font-weight:800;color:var(--acc2);
+  list-style:none;display:flex;align-items:center;gap:8px}
+.plan summary::-webkit-details-marker{display:none}
+.plan summary::before{content:'\2694'}
+.plan summary::after{content:'\25BE';margin-left:auto;transition:.2s}
+.plan[open] summary::after{transform:rotate(180deg)}
+.planbody{padding:0 11px 12px;display:grid;gap:7px}
+.ghd{padding:22px 20px 18px}
+.ghd h2{font-size:23px;font-weight:800;letter-spacing:-.02em}
+.gsec{padding:18px 20px;border-top:1px solid var(--line)}
+.gsec h3{font-size:12px;text-transform:uppercase;letter-spacing:.09em;color:var(--ink3);margin-bottom:8px}
+.empty{padding:26px 18px;text-align:center;color:var(--ink3);font-weight:700}
+.note{margin:0 18px 14px;padding:12px 14px;border-radius:12px;background:var(--s2);
+  border-left:4px solid var(--navy);font-size:13px;line-height:1.6;color:var(--ink2)}
+.note.warn{border-left-color:#e0a800;background:#fffaf0}
+.note b{color:var(--ink)}
+.srcgrid{display:grid;gap:10px}
+.src{border:1px solid var(--line);border-radius:13px;padding:12px 14px;background:var(--s2)}
+.src h4{font-size:14px;font-weight:800;margin-bottom:3px}
+.src .tag{display:inline-block;font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;
+  padding:2px 8px;border-radius:999px;margin-bottom:6px}
+.src .tag.first{background:#d9f2e4;color:#0a6b40}
+.src .tag.comm{background:#fff2cc;color:#8a6a00}
+.src p{font-size:12.5px;color:var(--ink2);line-height:1.6}
+.src code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;background:var(--s3);
+  padding:1px 5px;border-radius:4px}
+.exrow{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+.ex{border:1px solid var(--line);background:var(--s2);color:var(--ink2);border-radius:999px;
+  padding:7px 13px;font:inherit;font-size:11.5px;font-weight:700;cursor:pointer;text-align:left}
+.ex:hover{border-color:var(--acc);color:var(--acc2)}
+.matched{background:var(--s2);border-left:4px solid var(--navy);border-radius:10px;padding:10px 13px;
+  font-size:12.5px;color:var(--ink2);line-height:1.6;margin-bottom:12px}
+.matched b{color:var(--ink)}
+.alts{margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.askans h4{font-size:11.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink3);
+  margin:16px 0 8px}
+.askans h4:first-child{margin-top:0}
+.wrow{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:7px 0;border-bottom:1px solid var(--s3)}
+.wrow b{font-size:13px;min-width:120px}
+.minipill{border:1px solid var(--line);background:var(--s2);border-radius:999px;padding:4px 10px;
+  font:inherit;font-size:11px;font-weight:700;cursor:pointer;color:var(--ink2)}
+.minipill:hover{border-color:var(--acc);color:var(--acc2)}
+.minipill i{font-style:normal;color:var(--ink3);margin-left:5px}
+.btnlink{margin-top:14px;border:1px solid var(--acc);background:var(--accSoft);color:var(--acc2);
+  border-radius:999px;padding:9px 16px;font:inherit;font-size:12.5px;font-weight:800;cursor:pointer}
+footer{max-width:1180px;margin:0 auto;padding:0 18px 40px;color:var(--ink3);font-size:12.5px;line-height:1.7}
+.mobbar{display:none}
+@media(max-width:760px){
+  header{padding:8px 12px;gap:8px}
+  h1,.sub{display:none}
+  .logo{width:30px;height:30px;font-size:13px}
+  .wrap{padding:12px 12px 96px;gap:12px}
+  .card{border-radius:14px}
+  .sec{padding:14px}
+  .grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .tile2{padding:9px 10px}
+  .tile2 .k{font-size:9.5px}
+  .tile2 .v{font-size:12.5px}
+  .dexgrid{grid-template-columns:repeat(2,1fr);gap:9px;padding:0 12px 14px}
+  .dexart{height:60px}
+  .heroname{font-size:22px}
+  .locs{grid-template-columns:1fr;padding:0 12px 14px}
+  /* the odds bar is the first thing to go when a row gets tight */
+  .mon .bar{display:none}
+  .mon .who b{font-size:13.5px}
+  .mon .lv{font-size:11px}
+  .mon .pc{width:46px;font-size:12px}
+  .ghd p{font-size:12.5px}
+  .exrow .ex{font-size:11px;padding:6px 11px}
+  .cnts{grid-template-columns:1fr}
+  .mrow{flex-direction:column;align-items:flex-start;gap:6px}
+  .mrow .mlab{min-width:0}
+  .tcgrid td{width:20px;height:20px;font-size:9px}
+  .tcgrid thead th{height:52px;font-size:8.5px}
+  .tcgrid tbody th{font-size:8.5px}
+  .sortbar,.chips{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;padding-left:12px;padding-right:12px}
+  .sortbar::-webkit-scrollbar,.chips::-webkit-scrollbar{display:none}
+  .sortbar>*,.chips>*{flex:none}
+  .pad{padding:10px 12px 8px}
+  .ghd{padding:18px 14px 14px} .ghd h2{font-size:20px}
+  .gsec{padding:16px 14px}
+  .note{margin:0 12px 12px}
+  #viewswitch{display:none}
+  .mobbar{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:300;gap:6px;padding:8px 10px
+    calc(8px + env(safe-area-inset-bottom));background:#fff;border-top:3px solid var(--line)}
+  /* six tabs on a 390px phone: no gap, no side padding, labels ellipsise */
+  .mobbar{gap:0;padding-left:2px;padding-right:2px}
+  .mobbar button{flex:1 1 0;min-width:0;border:0;border-radius:12px;padding:7px 0 6px;background:none;
+    color:var(--ink3);font:inherit;font-size:9px;font-weight:800;cursor:pointer;display:flex;
+    flex-direction:column;align-items:center;gap:3px;letter-spacing:-.01em}
+  .mobbar button span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+  .mobbar button svg{width:20px;height:20px}
+  .mobbar button[aria-selected="true"]{background:var(--accSoft);color:var(--acc2)}
+  .mobbar button:active{transform:scale(.93)}
+  footer{padding:0 14px 110px}
+}
+@media(pointer:coarse){
+  .seg button{padding:11px 15px;font-size:13px}
+  .sortbar button{padding:10px 14px;font-size:12.5px}
+  .chip{padding:9px 13px;font-size:12.5px}
+}
+"""
+
+JS = r"""
+const D = JSON.parse(document.getElementById('data').textContent);
+const M = D.mon, TCH = D.tc, SPR = D.sprites;
+// mvl rows are [name, type, power, accuracy, category, priority]
+const MVL = D.mvl.map(r=>({n:r[0],t:r[1],p:r[2],a:r[3],c:r[4],pr:r[5]}));
+const MVI = {}; MVL.forEach((m,i)=>MVI[m.n]=i);
+const MV = MVI;   // kept as a name->index lookup
+function knowsTM(name,i){
+  const h=(M[name]||{}).tm; if(!h) return false;
+  // the mask is hex, low machine indices in the last characters
+  const ch=h.length-1-(i>>2);
+  if(ch<0) return false;
+  return (parseInt(h[ch],16)>>(i&3))&1;
+}
+const STATS=[['hp','HP'],['atk','Atk'],['def','Def'],['spa','SpA'],['spd','SpD'],['spe','Spe']];
+const TC = {Normal:'#A8A77A',Fire:'#EE8130',Water:'#6390F0',Electric:'#F7D02C',Grass:'#7AC74C',
+  Ice:'#96D9D6',Fighting:'#C22E28',Poison:'#A33EA1',Ground:'#E2BF65',Flying:'#A98FF3',Psychic:'#F95587',
+  Bug:'#A6B91A',Rock:'#B6A136',Ghost:'#735797',Dragon:'#6F35FC',Dark:'#705746',Steel:'#B7B7CE',
+  Fairy:'#D685AD'};
+let view='dex', query='', sortBy='name', statKey=null, statDir=-1, typeFilter=null;
+let selSpecies=null, selLoc=null;
+let F={wild:false, nomega:false, borrius:false, place:'', sKey:'', sMin:0};
+let shown=0;                      // how much of the dex grid is on screen
+
+/* ---------------- helpers ---------------- */
+function rgb(h){return [1,3,5].map(i=>parseInt(h.substr(i,2),16))}
+function inkOn(h){const [r,g,b]=rgb(h);return (r*299+g*587+b*114)/1000>150?'#1a1a1a':'#fff'}
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+function types(n){return (M[n]||{}).types||[]}
+function tcol(n){return TC[types(n)[0]]||'#A8A77A'}
+function sprite(n,size){
+  const i=SPR.index[n];
+  if(i===undefined) return `<span class="sp q" style="--s:${size}px"></span>`;
+  // position is in the sheet's own pixels, so it is the same at every size
+  const c=i%SPR.cols, r=Math.floor(i/SPR.cols);
+  return `<span class="sp" style="--s:${size}px"><i style="background-position:${
+    -c*64}px ${-r*64}px"></i></span>`;
+}
+function tyPill(t,extra){const c=TC[t]||'#A8A77A';
+  return `<span class="ty" style="background:${c};color:${inkOn(c)}">${t}${extra||''}</span>`}
+function badges(n){return `<span class="tys">${types(n).map(t=>tyPill(t)).join('')}</span>`}
+function cardTint(n){
