@@ -1,0 +1,155 @@
+          `<div class="wrow"><b>${esc(n)}</b> ${whereElse(n,m.name)}</div>`).join('')}`);
+      }
+    }
+    if(want.has('common')){
+      const cm=[...rows].sort((a,b)=>b.pct-a.pct).slice(0,6);
+      parts.push(`<h4>Easiest to find here</h4><div class="mons">${cm.map(r=>monLine(r)).join('')}</div>`);
+    }
+    if(!parts.length) parts.push(`<div class="mons">${rows.map(r=>monLine(r)).join('')}</div>`);
+    parts.push(`<button class="btnlink" data-loc="${esc(m.name)}">Open the full table for ${esc(m.name)}</button>`);
+    return {head,sure,body:parts.join('')};
+  }
+
+  if(sp.length){
+    const n=sp[0].n;
+    head=n;
+    sure=`Matched <b>${esc(n)}</b>.`;
+    if(want.has('counter')){
+      const d=defProfile(n);
+      parts.push(`<div class="mups">${mulRow('×4','m4',d[4])}${mulRow('×2','m2',d[2])}
+        ${mulRow('No effect','m0',d[0])}</div>`);
+      parts.push(`<h4>What beats it</h4><div class="cnts">${counters(n,6).map(c=>
+        `<button class="cnt" data-sp="${esc(c.n)}" style="${tint(c.n)}">${sprite(c.n,44)}
+        <span class="cmain"><b>${esc(c.n)}</b><span class="ctags">${tyPill(c.t)}
+        <span class="cx">×${c.x}</span></span></span></button>`).join('')}</div>`);
+    } else {
+      const w=WHERE[n]||[];
+      parts.push(`<h4>Where to find ${esc(n)}</h4>${w.length?`<div class="mons">${
+        w.map(x=>`<button class="mon" data-loc="${esc(x.loc)}" style="${tint(n)}">
+          <div class="who"><b>${esc(x.loc)}</b><span class="mut" style="font-size:11.5px">${esc(x.label)}${
+            x.unnamed?' · unnamed area':''}</span></div>
+          <div class="lv">Lv ${x.min===x.max?x.min:x.min+'–'+x.max}</div>
+          <div class="bar"><i style="width:${Math.max(x.pct,2)}%"></i></div>
+          <div class="pc">${x.pct}%</div></button>`).join('')}</div>`
+        :'<div class="mut">Not in any wild encounter table — check Raids, or it may be a gift or evolution.</div>'}`);
+    }
+    parts.push(`<button class="btnlink" data-sp="${esc(n)}">Open ${esc(n)}</button>`);
+    return {head,sure,body:parts.join('')};
+  }
+  return {head:'No match',sure:'',body:`<div class="mut">Nothing matched
+    “${esc(q)}”. Place names come from the encounter data — 26 areas have no documented name at all,
+    so if you are somewhere unnamed it will not be findable by name. Try a Pokémon instead.</div>`};
+}
+const EXAMPLES=[
+  'what are the rare pokemon in flower paradise and where else can i get them',
+  'where can i catch larvitar',
+  'what beats mimikyu',
+  'strongest pokemon in frost mountain',
+  'how do i beat mirskle',
+];
+function drawAsk(){
+  document.getElementById('askbody').innerHTML=`
+    <div class="card"><div class="ghd"><h2>Ask</h2>
+      <p class="mut" style="margin-top:8px;font-size:14px;max-width:72ch">Type a question in plain English.
+      This is not a chatbot — it matches your words against place names, Pokémon and trainers, then answers
+      from the same tables the rest of the app uses. It always shows what it matched, so a wrong guess is
+      obvious rather than confident.</p>
+      <div class="pad" style="padding:14px 0 6px"><input type="search" id="askq"
+        placeholder="e.g. what are the rare pokemon in flower paradise?" autocomplete="off"></div>
+      <div class="exrow">${EXAMPLES.map(e=>`<button class="ex" data-ex="${esc(e)}">${esc(e)}</button>`).join('')}</div>
+    </div>
+    <div id="askout"></div></div>`;
+  const inp=document.getElementById('askq');
+  const run=()=>{
+    const q=inp.value.trim();
+    if(!q){document.getElementById('askout').innerHTML='';return}
+    const a=answer(q);
+    document.getElementById('askout').innerHTML=`<div class="gsec">
+      <h3>${esc(a.head)}</h3>
+      ${a.sure?`<div class="matched">${a.sure}</div>`:''}
+      <div class="askans">${a.body}</div></div>`;
+    wire();
+  };
+  inp.oninput=run;
+  document.querySelectorAll('.ex').forEach(b=>b.onclick=()=>{inp.value=b.dataset.ex;run()});
+  inp.focus();
+}
+
+/* ---------------- provenance ---------------- */
+function drawAbout(){
+  document.getElementById('aboutbody').innerHTML=`
+    <div class="card"><div class="ghd"><h2>Where this data comes from</h2>
+      <p class="mut" style="margin-top:8px;font-size:14px;max-width:74ch">Unbound has no decompilation. Half of
+      what is on this site is published by the game's own author and version-matched to 2.1.1.1; the other half
+      is community work of varying provenance. The difference matters, so it is labelled rather than blended.</p></div>
+      <div class="gsec"><div class="srcgrid">
+        <div class="src"><span class="tag first">First-party · version-matched</span>
+          <h4>Species, stats, abilities, evolutions, learnsets</h4>
+          <p>Skeli789's <code>Dynamic-Pokemon-Expansion</code>, branch <code>Unbound</code>, pinned at commit
+          <code>fe058e0e</code> — whose message is "Changes for 2.1.1". 1,274 species with full base stats,
+          types, abilities, hidden abilities, egg groups, evolution methods, level-up learnsets and TM/tutor
+          compatibility. Parsed directly from the C tables.</p></div>
+        <div class="src"><span class="tag first">First-party · version-matched</span>
+          <h4>Moves, the type chart, raid dens, sprites</h4>
+          <p><code>Complete-Fire-Red-Upgrade</code> at <code>b637a278</code>, the commit Unbound 2.1.1.1 was
+          built from. 922 moves with per-move physical/special category, the full 18-type Gen VI chart, and
+          105 raid dens from <code>raid_encounters.h</code>. Sprites are the game's own 64×64 artwork.</p></div>
+        <div class="src"><span class="tag comm">Community · provenance unknown</span>
+          <h4>Wild encounters</h4>
+          <p>From <code>ydarissep/Unbound-Pokedex</code>'s <code>encounters.json</code> — the only public table
+          carrying levels and slot order. It is undocumented and carries no version tag, and 43 of its 165 maps
+          have no name. Slot percentages here are computed from CFRU's own rate tables. 26 areas are still
+          unnamed and say so; 17 more are matched to a parent area by encounter contents and are labelled as
+          inferred.</p></div>
+        <div class="src"><span class="tag comm">Community · transcription</span>
+          <h4>Trainers and bosses</h4>
+          <p>From <code>jimineybillybob1/pokemon-unbound-field-guide</code>, itself a transcription of the
+          community Trainers Doc spreadsheets. Vanilla difficulty is documented only for the eight gym leaders;
+          every other boss shows its lowest documented difficulty, labelled on the card.</p></div>
+      </div>
+      <p class="mut" style="font-size:12.5px;margin-top:14px;line-height:1.7">Not affiliated with Skeli789, the
+      Unbound team, Nintendo, Game Freak or The Pokémon Company. Built as a reference for a fan game.</p>
+      </div></div>`;
+}
+
+/* ---------------- shell ---------------- */
+const VIEWS=['ask','dex','locs','bosses','raids','tips','about'];
+function setView(v){
+  view=v;
+  if(v!=='dex') selSpecies=null;
+  if(v!=='locs') selLoc=null;
+  for(const k of VIEWS) document.getElementById(k+'view').style.display=k===v?'':'none';
+  document.querySelectorAll('#viewswitch button').forEach(b=>
+    b.setAttribute('aria-pressed',String(b.dataset.view===v)));
+  document.querySelectorAll('#mobbar button').forEach(b=>
+    b.setAttribute('aria-selected',String(b.dataset.view===v)));
+  const qi=document.getElementById('q');
+  qi.placeholder={dex:'Search Pokémon…',locs:'Search locations or a Pokémon…',
+    bosses:'Search trainers or a Pokémon…',raids:'Search dens…'}[v]||'Search…';
+  document.getElementById('searchwrap').style.display=
+    (v==='tips'||v==='about'||v==='ask')?'none':'';
+  document.getElementById('dexfilters').style.display=v==='dex'?'':'none';
+  if(v==='dex') drawDex();
+  if(v==='locs') drawLocs();
+  if(v==='bosses') drawBosses();
+  if(v==='raids') drawRaids();
+  if(v==='tips') drawTips();
+  if(v==='about') drawAbout();
+  if(v==='ask') drawAsk();
+  writeHash();
+}
+function selectSpecies(n){
+  if(!M[n]) return;
+  selSpecies=n; setView('dex');
+  document.getElementById('dexpanel').innerHTML=speciesPanel(n);
+  wire(); writeHash();
+  document.getElementById('dexpanel').scrollIntoView({behavior:'smooth',block:'start'});
+}
+function selectLoc(n){
+  selLoc=n; setView('locs');
+  document.getElementById('locpanel').innerHTML=locPanel(n);
+  wire(); writeHash();
+  document.getElementById('locpanel').scrollIntoView({behavior:'smooth',block:'start'});
+}
+function wire(){
+  document.querySelectorAll('[data-plan]:not([data-bound])').forEach(d=>{
