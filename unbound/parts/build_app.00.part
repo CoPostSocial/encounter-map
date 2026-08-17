@@ -1,0 +1,167 @@
+"""Assemble the Pokemon Unbound atlas.
+
+Same shape as the Hoenn/Kanto atlas -- Pokedex cards, stat percentiles,
+matchups, counters, boss plans -- on Gen VI mechanics and without a map, since
+Unbound publishes no layout data. Locations are a searchable list instead.
+"""
+import json, os, re, html
+import os
+ROOT = os.environ.get('UBROOT', '/home/claude/unbound')
+
+HERE = ROOT
+SP = json.load(open(f'{HERE}/species.json'))
+BATTLE = json.load(open(f'{HERE}/battle.json'))
+WORLD = json.load(open(f'{HERE}/world.json'))
+SPRITES = json.load(open(f'{HERE}/sprites.json'))
+
+PACKED = set(SPRITES['index'])                 # what has artwork = what we show
+ALL = SP['species']
+BY_NAME = {}
+for c, d in ALL.items():
+    BY_NAME.setdefault(d['name'], c)
+
+# Trim to the reachable roster: shipping learnsets for 1274 species when the app
+# can only ever display 1026 of them is a megabyte of payload nobody reads.
+# Moves are interned. Storing "Vine Whip" once per learnset entry across a
+# thousand species cost 354 KB of the payload on its own; an index into one
+# array costs a couple of bytes.
+MVL, MVI = [], {}
+for v in BATTLE['moves'].values():
+    if v['n'] not in MVI:
+        MVI[v['n']] = len(MVL)
+        MVL.append([v['n'], v['t'], v['p'], v['a'], v['c'], v['pr']])
+
+NMACH = len(SP['machines'])
+DROP = ('const', 'i', 'raw', 'exp', 'cyc', 'fr')
+
+import re as _re
+mon = {}
+for name in PACKED:
+    const = BY_NAME[name]
+    d = dict(ALL[const])
+    # Megas, Gigantamax and Primal forms are battle-only transformations, not
+    # things you carry around, so they are worth hiding as a group.
+    if _re.search(r'_(MEGA(_[XY])?|GIGA|PRIMAL)$', const):
+        d['mega'] = 1
+    for k in DROP:
+        d.pop(k, None)
+    if 'lv' in d:
+        d['lv'] = [[l, MVI[m]] for l, m in d['lv'] if m in MVI]
+    # TM compatibility as a bitmask: 128 machines in 32 hex characters rather
+    # than a list of up to 128 numbers.
+    if 'tm' in d:
+        bits = 0
+        for i in d['tm']:
+            bits |= 1 << i
+        d['tm'] = format(bits, 'x')
+    mon[name] = d
+
+# The app never uses the SPECIES_ constant on an encounter row; only the sprite
+# builder does, and that has already run.
+for m in WORLD['maps']:
+    for blk in m['methods'].values():
+        for r in blk['rows']:
+            r.pop('c', None)
+
+payload = {
+    'mon': mon,
+    'machines': [dict(m, mi=MVI.get(m['mv'], -1)) for m in SP['machines']],
+    'mvl': MVL,
+    'tc': BATTLE['tc'],
+    'maps': WORLD['maps'],
+    'raids': WORLD['raids'],
+    'bosses': WORLD['bosses'],
+    'trainers': WORLD['trainers'],
+    'specials': WORLD['specials'],
+    'sprites': SPRITES,
+}
+
+TYPES = BATTLE['tc']['names']
+
+CSS = r"""
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#eef3fb; --s1:#ffffff; --s2:#f4f7fd; --s3:#e7edf8;
+  --ink:#0d2136; --ink2:#4d6280; --ink3:#8496ae;
+  --line:#dbe4f2; --line2:#c3d1e8;
+  --acc:#e3350d; --acc2:#c02a09; --accInk:#fff; --accSoft:#fdecea;
+  --gold:#ffcb05; --navy:#2a75bb;
+}
+html,body{background:var(--bg);color:var(--ink);
+  font-family:ui-rounded,'SF Pro Rounded','Segoe UI Variable Display','Segoe UI',
+    system-ui,-apple-system,'Helvetica Neue',sans-serif;
+  font-weight:600;-webkit-text-size-adjust:100%}
+body{padding-bottom:0}
+a{color:var(--acc2)}
+header{position:sticky;top:0;z-index:200;display:flex;align-items:center;gap:12px;
+  padding:10px 18px;background:rgba(255,255,255,.92);backdrop-filter:blur(14px);
+  border-bottom:3px solid var(--line)}
+.logo{width:36px;height:36px;border-radius:11px;flex:none;display:grid;place-items:center;
+  background:linear-gradient(150deg,var(--acc),#ff6a3d);color:#fff;font-weight:800;font-size:15px;
+  box-shadow:0 6px 16px -6px rgba(227,53,13,.7)}
+h1{font-size:16px;font-weight:800;letter-spacing:-.01em;line-height:1.15}
+.sub{font-size:11.5px;color:var(--ink3);font-weight:700}
+.grow{flex:1}
+.seg{display:flex;gap:2px;background:var(--s2);border:1px solid var(--line);border-radius:999px;padding:3px}
+.seg button{border:0;background:none;border-radius:999px;padding:8px 14px;font:inherit;font-size:12.5px;
+  font-weight:800;color:var(--ink2);cursor:pointer;white-space:nowrap}
+.seg button[aria-pressed="true"]{background:var(--acc);color:var(--accInk)}
+.wrap{max-width:1180px;margin:0 auto;padding:18px 18px 40px;display:grid;gap:16px}
+.card{background:var(--s1);border:1px solid var(--line);border-radius:18px;overflow:hidden;min-width:0;
+  box-shadow:0 1px 2px rgba(13,33,54,.04)}
+.pad{padding:14px 16px 10px}
+input[type=search]{width:100%;border:2px solid var(--line);background:var(--s2);color:var(--ink);
+  border-radius:14px;padding:11px 15px;font:inherit;font-size:14.5px;font-weight:700;outline:none}
+input[type=search]:focus{border-color:var(--acc);background:#fff}
+.sortbar{display:flex;gap:5px;padding:0 16px 10px;flex-wrap:wrap;align-items:center}
+.sortbar .lbl{font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--ink3)}
+.sortbar button{border:1px solid var(--line);background:var(--s2);color:var(--ink2);border-radius:999px;
+  padding:6px 12px;font:inherit;font-size:11.5px;font-weight:800;cursor:pointer}
+.sortbar button[aria-pressed="true"]{background:var(--acc);color:var(--accInk);border-color:var(--acc)}
+.statsort{padding-top:0}
+.statsort button i{font-style:normal;margin-left:4px;font-size:9px;vertical-align:1px}
+.filters{padding-top:0;align-items:center}
+.filters .chip[aria-pressed="true"]{background:var(--acc);color:var(--accInk);border-color:var(--acc)}
+.filters .clearf{background:none;border-style:dashed;color:var(--ink3)}
+.sel,.num{border:1px solid var(--line);background:var(--s2);color:var(--ink2);border-radius:999px;
+  padding:6px 11px;font:inherit;font-size:11.5px;font-weight:800;cursor:pointer;max-width:170px}
+.num{width:86px;cursor:text}
+.num:disabled{opacity:.45;cursor:not-allowed}
+.sel:focus,.num:focus{outline:none;border-color:var(--acc)}
+.fsummary{flex-wrap:wrap;padding-top:0}
+.fpill{background:var(--accSoft);color:var(--acc2);border:1px solid rgba(227,53,13,.3);
+  border-radius:999px;padding:5px 11px;font-size:11.5px;font-weight:800}
+.chips{display:flex;flex-wrap:wrap;gap:5px;padding:0 16px 12px}
+.chip{border:1px solid var(--line);background:var(--s2);color:var(--ink2);border-radius:999px;
+  padding:5px 11px;font:inherit;font-size:11.5px;font-weight:800;cursor:pointer}
+.mut{color:var(--ink3)}
+/* Every sprite draws from ONE rasterisation of the sheet at its native size.
+   Scaling the background instead (background-size in element pixels) made the
+   browser re-rasterise a 4-megapixel PNG once per distinct sprite size -- and
+   the 120px hero blew that up to 14.9 MP. Painting the Pokedex cost 6.5s on a
+   throttled phone. Now the source is decoded once and each 64px window is
+   composited with a transform, which the GPU does for free. */
+.sp{display:inline-block;width:var(--s,48px);height:var(--s,48px);flex:none;
+  position:relative;overflow:hidden;vertical-align:middle}
+.sp i{position:absolute;left:0;top:0;width:64px;height:64px;
+  background-image:var(--sheet);background-repeat:no-repeat;
+  background-size:var(--sheetw) var(--sheeth);image-rendering:pixelated;
+  transform-origin:0 0;transform:scale(calc(var(--s,48px)/64))}
+.sp.q i{background-image:none}
+.ty{display:inline-block;padding:3px 9px;border-radius:999px;font-size:10px;font-weight:800;
+  letter-spacing:.04em;text-transform:uppercase}
+.tys{display:inline-flex;gap:4px;vertical-align:middle}
+/* ---------- pokedex cards ---------- */
+.dexgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;padding:0 16px 16px}
+.dexcard{position:relative;border-radius:16px;padding:9px 10px 11px;border:1px solid var(--line);
+  background:var(--s1);cursor:pointer;text-align:left;overflow:hidden;isolation:isolate;font:inherit;
+  transition:transform .15s cubic-bezier(.2,.8,.3,1),box-shadow .15s,border-color .15s}
+.dexcard::before{content:'';position:absolute;inset:0;z-index:-2;background:var(--g)}
+.dexcard::after{content:'';position:absolute;right:-24px;bottom:-30px;width:98px;height:98px;z-index:-1;
+  border-radius:50%;border:10px solid rgba(255,255,255,.42)}
+.dexcard{content-visibility:auto;contain-intrinsic-size:auto 168px}
+.dexcard:hover{transform:translateY(-3px);box-shadow:0 14px 28px -14px rgba(13,33,54,.42)}
+.dexcard:active{transform:scale(.97)}
+.dexcard[aria-current="true"]{border-color:var(--acc);box-shadow:0 0 0 2px var(--accSoft)}
+.dexno{position:absolute;top:8px;right:10px;font-size:10px;font-weight:800;color:rgba(13,33,54,.38);
+  font-variant-numeric:tabular-nums}
