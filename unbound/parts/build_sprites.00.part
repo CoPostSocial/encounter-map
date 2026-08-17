@@ -1,0 +1,150 @@
+"""Sprite sheet for everything the Unbound app can put on screen.
+
+Unbound ships its own 64x64 front sprites in the author's repo -- including the
+Gen 4-8 species and every Mega and regional form drawn in GBA style -- so these
+are the game's real artwork rather than a substitute. Unlike the pret decomps
+the palette is already embedded in each PNG, with index 0 as the usual magenta
+transparency key, so there is no separate .pal to load.
+
+1274 species is three times the Hoenn sheet, so only pack what the app can
+actually reach: anything wild, in a raid, on a boss's team, given as a gift,
+or standing anywhere in an evolution line that touches one of those.
+"""
+import base64, json, os, collections
+import os
+ROOT = os.environ.get('UBROOT', '/home/claude/unbound')
+from PIL import Image
+
+OUT = ROOT
+SRC = os.path.join(ROOT, 'src')
+SP = json.load(open(os.path.join(OUT, 'species.json')))
+WORLD = json.load(open(os.path.join(OUT, 'world.json')))
+SPECIES = SP['species']
+FRONT = os.path.join(SRC, 'dpe/graphics/frontspr')
+
+BY_NAME = {}
+for c, d in SPECIES.items():
+    BY_NAME.setdefault(d['name'], c)
+
+
+def seed():
+    """Everything reachable from the app's own screens."""
+    got = set()
+    for m in WORLD['maps']:
+        for blk in m['methods'].values():
+            for r in blk['rows']:
+                got.add(r['c'])
+    for r in WORLD['raids']:
+        for n in r['p']:
+            if n in BY_NAME:
+                got.add(BY_NAME[n])
+    for b in WORLD['bosses']:
+        for mon in b['p']:
+            if mon['s'] in BY_NAME:
+                got.add(BY_NAME[mon['s']])
+    for t in WORLD['trainers']:
+        for mon in t['p']:
+            if mon['s'] in BY_NAME:
+                got.add(BY_NAME[mon['s']])
+    for key, rows in WORLD['specials'].items():
+        for row in rows if isinstance(rows, list) else []:
+            for field in ('pokemon', 'species', 'name', 'give', 'receive'):
+                v = row.get(field) if isinstance(row, dict) else None
+                if isinstance(v, str) and v in BY_NAME:
+                    got.add(BY_NAME[v])
+    # the Borrius dex is browsable in full, so it all needs artwork
+    for c, d in SPECIES.items():
+        if d.get('rdex'):
+            got.add(c)
+    return got
+
+
+def family_closure(base):
+    """Evolution lines are drawn whole, and later stages are usually not wild.
+
+    Also pull in Mega and Gigantamax forms, which the species panel shows but
+    which never appear in an encounter table by definition."""
+    down = collections.defaultdict(set)
+    up = {}
+    for c, d in SPECIES.items():
+        for step in d.get('evo', []):
+            tgt = step.rsplit('→', 1)[-1].strip()
+            tc = BY_NAME.get(tgt)
+            if tc:
+                down[c].add(tc)
+                up[tc] = c
+        for f in d.get('forms', []):
+            fc = BY_NAME.get(f['to'])
+            if fc:
+                down[c].add(fc)
+    fam, stack = set(base), list(base)
+    while stack:
+        n = stack.pop()
+        for nxt in list(down.get(n, ())) + ([up[n]] if n in up else []):
+            if nxt not in fam:
+                fam.add(nxt)
+                stack.append(nxt)
+    return fam
+
+
+def load(const):
+    d = SPECIES.get(const)
+    if not d:
+        return None
+    for p in (os.path.join(FRONT, f'gFrontSprite{d["i"]:03d}{d.get("raw","")}.png'),):
+        if os.path.exists(p):
+            break
+    else:
+        p = None
+    if p is None:
+        import glob
+        hits = glob.glob(os.path.join(FRONT, f'gFrontSprite{d["i"]:03d}*.png'))
+        if not hits:
+            return None
+        p = hits[0]
+    src = Image.open(p)
+    rgba = src.convert('RGBA')
+    px, sp = rgba.load(), src.load()
+    # index 0 is the GBA transparency key
+    for y in range(rgba.height):
+        for x in range(rgba.width):
+            if sp[x, y] == 0:
+                px[x, y] = (0, 0, 0, 0)
+    return rgba.crop((0, 0, 64, 64))
+
+
+want = sorted(family_closure(seed()))
+sprites, missing = {}, []
+for c in want:
+    s = load(c)
+    if s is None:
+        missing.append(c)
+    else:
+        sprites[c] = s
+
+COLS = 24
+ordered = [c for c in want if c in sprites]
+rows = (len(ordered) + COLS - 1) // COLS
+sheet = Image.new('RGBA', (COLS * 64, rows * 64), (0, 0, 0, 0))
+index = {}
+for i, c in enumerate(ordered):
+    sheet.paste(sprites[c], ((i % COLS) * 64, (i // COLS) * 64))
+    index[SPECIES[c]['name']] = i
+
+alpha = sheet.split()[3]
+q = sheet.convert('RGB').quantize(colors=255, method=Image.MEDIANCUT).convert('P')
+qpx, apx = q.load(), alpha.load()
+for y in range(q.height):
+    for x in range(q.width):
+        if apx[x, y] < 128:
+            qpx[x, y] = 255
+q.putpalette(q.getpalette()[:255 * 3] + [0, 0, 0])
+path = os.path.join(OUT, 'sheet.png')
+q.save(path, transparency=255, optimize=True)
+b64 = base64.b64encode(open(path, 'rb').read()).decode()
+json.dump({'cols': COLS, 'rows': rows, 'index': index,
+           'uri': 'data:image/png;base64,' + b64},
+          open(os.path.join(OUT, 'sprites.json'), 'w'))
+print(f'seed={len(seed())} closure={len(want)} packed={len(ordered)} '
+      f'missing={len(missing)} {missing[:6]}')
+print(f'sheet={os.path.getsize(path)//1024}KB b64={len(b64)//1024}KB {COLS}x{rows}')
