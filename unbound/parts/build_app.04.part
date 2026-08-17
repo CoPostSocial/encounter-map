@@ -1,0 +1,169 @@
+    ['Catch rate', m.catch!==undefined?`${m.catch} / 255${m.catch>=200?' — easy':m.catch<=45?' — tough':''}`:'—'],
+    ['Abilities', (m.abil||[]).join(' / ')||'—'],
+    ['Hidden ability', m.ha||'—'],
+    ['Wild held item', (m.held||[]).join(' · ')||'None'],
+    ['Gender', gender],
+    ['Egg groups', (m.egg||[]).join(' · ')||'—'],
+  ];
+  return `<div class="card">
+    <div class="hero" style="${cardTint(name)}">
+      <div class="herotop">
+        <div class="heroinfo"><div class="heroname">${esc(name)}</div>
+          ${m.cat?`<div class="herocat">${esc(m.cat)} Pokémon</div>`:''}
+          <div style="margin-top:8px">${badges(name)}</div></div>
+        <div class="herono">${dexNo(name)}${m.rdex?`<small>Borrius #${String(m.rdex).padStart(3,'0')}</small>`:''}</div>
+      </div>
+      <div class="herobody"><div class="heroinfo">
+        <div class="herodims">
+          ${m.ht?`<div>Height<b>${(m.ht/10).toFixed(1)} m</b></div>`:''}
+          ${m.wt?`<div>Weight<b>${(m.wt/10).toFixed(1)} kg</b></div>`:''}
+          <div>Total<b>${m.bst||0}</b></div></div>
+        <div class="mut" style="font-size:12px;margin-top:9px;font-weight:700">${
+          where.length?`${where.length} wild spot${where.length===1?'':'s'} · best ${where[0].pct}% at ${esc(where[0].loc)}`
+          :'Not in any wild encounter table'}</div>
+      </div>${sprite(name,120)}</div>
+    </div>
+    <div class="sec"><div class="grid">
+      ${facts.map(([k,v])=>`<div class="tile2"><div class="k">${k}</div><div class="v">${esc(v)}</div></div>`).join('')}
+    </div>
+    <div class="tile2" style="margin-top:9px"><div class="k">Base stats · total ${m.bst||0}${
+      rl?` · beats ${statPct(RANK.bst,m.bst||0)}% of the roster`:''}</div>
+      ${rl?`<div class="rolechip">${rl.text}</div>`:''}
+      ${STATS.map(([k,l])=>{const p=rl?rl.p[k]:0,t=tier(p);
+        return `<div class="statrow"><span class="k">${l}</span>
+        <span class="b ${t[2]}"><i style="width:${Math.max(p,2)}%"></i></span>
+        <span class="v">${m[k]??'—'}</span><span class="pc2">${rl?p+'%':''}</span></div>`}).join('')}
+      ${rl?`<div class="mut" style="font-size:11px;margin-top:8px">Bars are percentiles against the
+        ${Object.keys(M).length} Pokémon this game can show you — ${tier(rl.p.spe)[1].toLowerCase()} Speed,
+        ${tier(rl.bulk)[1].toLowerCase()} bulk.</div>`:''}</div></div>
+    ${matchupSection(name)}
+    ${evoSection(name)}
+    ${movesSection(name)}
+    ${where.length?`<div class="sec"><div class="sechd"><h3>Where to find it</h3></div><div class="mons">
+      ${where.map(w=>`<button class="mon" data-loc="${esc(w.loc)}" style="${tint(name)}">
+        <div class="who"><b>${esc(w.loc)}</b>
+          <span class="mut" style="font-size:11.5px">${esc(w.label)}${w.unnamed?' · unnamed area':''}</span></div>
+        <div class="lv">Lv ${w.min===w.max?w.min:w.min+'–'+w.max}</div>
+        <div class="bar"><i style="width:${Math.max(w.pct,2)}%"></i></div>
+        <div class="pc">${w.pct}%</div></button>`).join('')}</div></div>`:''}
+  </div>`;
+}
+
+/* ---------------- pokedex list ---------------- */
+const STATSORTS=[['bst','Total'],...STATS];
+function dexCard(n,meta){
+  return `<button class="dexcard" data-sp="${esc(n)}" style="${cardTint(n)}"
+    ${selSpecies===n?'aria-current="true"':''}>
+    <span class="dexno">${dexNo(n)}</span>
+    <span class="dexart">${sprite(n,60)}</span>
+    <span class="dexname">${esc(n)}</span>
+    <span class="dextys">${types(n).map(t=>tyPill(t)).join('')}</span>
+    ${meta?`<span class="dexmeta">${esc(meta)}</span>`:''}</button>`;
+}
+function statOf(n,k){const m=M[n];if(!m)return null;
+  if(k==='bst') return m.hp===undefined?null:(m.bst||0);
+  return m[k]===undefined?null:m[k]}
+const PAGE=60;                  // cards rendered per chunk
+let dexNames=[];
+function drawDex(reset){
+  if(reset!==false) shown=0;
+  const q=query.toLowerCase();
+  let names=Object.keys(M).filter(n=>(!q||n.toLowerCase().includes(q))
+    &&(!typeFilter||types(n).includes(typeFilter))&&passes(n));
+  let metaFn=n=>{const w=WHERE[n];
+    return w?`${w[0].pct}% · ${w.length} spot${w.length===1?'':'s'}`:'Not wild';};
+  if(sortBy==='stat'&&statKey){
+    names.sort((a,b)=>{const x=statOf(a,statKey),y=statOf(b,statKey);
+      if(x===null&&y===null)return a.localeCompare(b);
+      if(x===null)return 1; if(y===null)return -1;
+      return (y-x)*(statDir<0?1:-1)||a.localeCompare(b)});
+    const lbl=(STATSORTS.find(s=>s[0]===statKey)||[])[1];
+    metaFn=n=>{const v=statOf(n,statKey);
+      return v===null?'No stats':`${lbl} ${v} · beats ${statPct(RANK[statKey],v)}%`};
+  }
+  else if(sortBy==='borrius') names.sort((a,b)=>((M[a].rdex||9999)-(M[b].rdex||9999))||a.localeCompare(b));
+  else if(sortBy==='dex') names.sort((a,b)=>((M[a].dex||9999)-(M[b].dex||9999))||a.localeCompare(b));
+  else if(sortBy==='common') names.sort((a,b)=>((WHERE[b]||[{pct:0}])[0].pct)-((WHERE[a]||[{pct:0}])[0].pct)||a.localeCompare(b));
+  else if(sortBy==='rare') names.sort((a,b)=>{
+    const x=WHERE[a],y=WHERE[b];
+    if(!x&&!y) return a.localeCompare(b); if(!x) return 1; if(!y) return -1;
+    return x[0].pct-y[0].pct||a.localeCompare(b)});
+  else names.sort((a,b)=>a.localeCompare(b));
+  if(sortBy==='borrius') names=names.filter(n=>M[n].rdex);
+  dexNames=names; dexMeta=metaFn;
+  document.getElementById('dexcount').textContent =
+    `${names.length} of ${Object.keys(M).length}`;
+  const el=document.getElementById('dexlist');
+  if(!names.length){el.innerHTML='<div class="empty">Nothing matches.</div>';return}
+  // Painting a thousand cards at once is what made this feel heavy on a phone;
+  // render a screenful and add more as the sentinel scrolls into view.
+  el.innerHTML=`<div class="dexgrid" id="dexgrid"></div><div id="dexmore"></div>`;
+  shown=0; moreDex();
+}
+let dexMeta=n=>'';
+function moreDex(){
+  const grid=document.getElementById('dexgrid'); if(!grid) return;
+  const next=dexNames.slice(shown,shown+PAGE);
+  if(!next.length) return;
+  grid.insertAdjacentHTML('beforeend',next.map(n=>dexCard(n,dexMeta(n))).join(''));
+  shown+=next.length;
+  grid.querySelectorAll('.dexcard:not([data-w])').forEach(b=>{
+    b.dataset.w=1; b.onclick=()=>selectSpecies(b.dataset.sp)});
+  const more=document.getElementById('dexmore');
+  more.innerHTML = shown<dexNames.length
+    ? `<button class="btnlink" id="loadmore">Show more — ${dexNames.length-shown} left</button>`
+    : '';
+  const lm=document.getElementById('loadmore');
+  if(lm){
+    lm.onclick=moreDex;
+    if(dexObs) dexObs.disconnect();
+    dexObs=new IntersectionObserver(es=>{if(es.some(e=>e.isIntersecting)) moreDex()},
+      {rootMargin:'600px'});
+    dexObs.observe(lm);
+  }
+}
+let dexObs=null;
+const SORTS=[['name','A–Z'],['borrius','Borrius dex'],['dex','National dex'],
+             ['common','Easiest to find'],['rare','Rarest first']];
+function drawSort(){
+  const el=document.getElementById('sortbar');
+  el.innerHTML='<span class="lbl">Sort</span>'+SORTS.map(([k,l])=>
+    `<button data-sort="${k}" aria-pressed="${sortBy===k}">${l}</button>`).join('');
+  el.querySelectorAll('[data-sort]').forEach(b=>b.onclick=()=>{
+    sortBy=b.dataset.sort;statKey=null;drawSort();drawStatSort();drawDex()});
+  keepVisible(el);
+}
+function drawStatSort(){
+  const el=document.getElementById('statsort');
+  el.innerHTML='<span class="lbl">Base stat</span>'+STATSORTS.map(([k,l])=>
+    `<button data-stat="${k}" aria-pressed="${statKey===k}">${l}${
+      statKey===k?`<i>${statDir<0?'▼':'▲'}</i>`:''}</button>`).join('');
+  el.querySelectorAll('[data-stat]').forEach(b=>b.onclick=()=>{
+    const k=b.dataset.stat;
+    if(statKey===k) statDir=-statDir; else {statKey=k;statDir=-1}
+    sortBy='stat';drawSort();drawStatSort();drawDex()});
+  keepVisible(el);
+}
+function keepVisible(el){
+  const on=el.querySelector('[aria-pressed="true"]');
+  if(on&&el.scrollWidth>el.clientWidth) on.scrollIntoView({inline:'center',block:'nearest'});
+}
+function activeF(){
+  const out=[];
+  if(F.wild) out.push('in the wild');
+  if(F.nomega) out.push('no Megas');
+  if(F.borrius) out.push('Borrius dex');
+  if(F.place) out.push(F.place);
+  if(F.sKey&&F.sMin){
+    const l=(STATSORTS.find(x=>x[0]===F.sKey)||['','stat'])[1];
+    out.push(`${l} ≥ ${F.sMin}`);
+  }
+  return out;
+}
+function drawFilters(){
+  const el=document.getElementById('filters');
+  const opts=D.maps.map(m=>m.name).sort();
+  el.innerHTML=`
+    <span class="lbl">Only</span>
+    <button class="chip" data-f="wild" aria-pressed="${F.wild}">In the wild</button>
+    <button class="chip" data-f="nomega" aria-pressed="${F.nomega}">Hide Megas</button>
