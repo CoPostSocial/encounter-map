@@ -32,7 +32,7 @@ pip install --quiet --disable-pip-version-check Pillow
 say "python $(python3 -V 2>&1) pillow ok"
 
 # ---- reassemble the build scripts ------------------------------------------
-# The pipeline is ~100 KB of Python and the file API this repo is written
+# The pipeline is ~120 KB of Python and the file API this repo is written
 # through truncates large writes silently -- a 14 KB push arrived as 5.5 KB
 # once. So each script ships as ordered <8.6 KB parts and is checksummed after
 # reassembly. A short read now fails the build instead of producing a subtly
@@ -51,7 +51,7 @@ check_script build_species 6b218da8741219c2ebf0b71148caa2852dcbb88eae9493a0797da
 check_script build_battle  35cf42c0bb78177f36f3768653cbb098e4f7ad965a4cf785648609f1ac4e85e7
 check_script build_world   78f7aae2ac73451a00ae4d168ee494f50a12334d6474f063bc781e5f38b7e974
 check_script build_sprites bab889315631643edcc6ed89e5b6e182ad5795917c764a5385b6f9813bc3b5de
-check_script build_app     aca39785f41def33e1aaaed5ffaba61364fca707ef05323f1d43a804a14ec900
+check_script build_app     6399251d02ad843a6d9a232b776c39ee2fe978834b42adfd15d90161d2a2c636
 
 # ---- pinned sources --------------------------------------------------------
 # The author's species tables. Cloned rather than fetched file by file because
@@ -93,14 +93,22 @@ for step in species battle world sprites app; do
   python3 "build_$step.py" 2>&1 | tee -a "$ROOT/.log"
 done
 
-cp "$UBROOT/unbound-atlas.html" "$ROOT/public/index.html"
-say "=== finished $(date -u +%H:%M:%SZ) size=$(( $(wc -c < "$ROOT/public/index.html") / 1024 ))KB ==="
+# build_app emits two things: a single self-contained file for downloading, and
+# a web pair whose sprite sheet is its own cacheable PNG rather than 950 KB of
+# base64 the browser has to parse before it can paint.
+cp "$UBROOT/public/index.html"  "$ROOT/public/index.html"
+cp "$UBROOT/public/sprites.png" "$ROOT/public/sprites.png"
+cp "$UBROOT/unbound-atlas.html" "$ROOT/public/unbound-atlas.html"
+say "=== finished $(date -u +%H:%M:%SZ) html=$(( $(wc -c < "$ROOT/public/index.html") / 1024 ))KB \
+sheet=$(( $(wc -c < "$ROOT/public/sprites.png") / 1024 ))KB \
+offline=$(( $(wc -c < "$ROOT/public/unbound-atlas.html") / 1024 ))KB ==="
 
 {
   echo '<!doctype html><meta charset="utf-8"><title>Unbound Atlas build</title>'
   echo '<style>body{font:13px/1.6 ui-monospace,Menlo,monospace;background:#0d1117;color:#c9d1d9;padding:24px}'
   echo 'pre{white-space:pre-wrap}a{color:#58a6ff}</style>'
-  echo '<h1>Unbound Atlas build</h1><p><a href="/">open the site</a></p><pre>'
+  echo '<h1>Unbound Atlas build</h1><p><a href="/">open the site</a> &middot; '
+  echo '<a href="/unbound-atlas.html">single-file offline copy</a></p><pre>'
   sed 's/&/\&amp;/g;s/</\&lt;/g' "$ROOT/.log"
   echo '</pre>'
 } > "$LOG"
