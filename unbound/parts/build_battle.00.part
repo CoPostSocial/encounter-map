@@ -1,0 +1,157 @@
+"""Moves and the type chart for Unbound, out of Complete-Fire-Red-Upgrade.
+
+Two things differ from Gen III and both matter for anything that ranks moves or
+computes a matchup:
+
+  * The physical/special split is per move. Gen III decides it from the move's
+    type (IS_TYPE_PHYSICAL(t) == t < TYPE_MYSTERY); CFRU gives every move its
+    own .split field, so a Water physical move is possible and common.
+  * There are 18 types including Fairy, and the chart is a proper 2D table
+    rather than Gen III's flat list of triples -- no Foresight sentinel to trip
+    over, but a different chart: Steel no longer resists Ghost or Dark, and the
+    three Fairy rows and columns are new.
+"""
+import json, os, re
+import os
+ROOT = os.environ.get('UBROOT', '/home/claude/unbound')
+
+SRC = os.path.join(ROOT, 'src')
+CFRU = os.path.join(SRC, 'cfru')
+OUT = ROOT
+
+
+# reuse the string-table reader without re-running the whole species build
+def load_string_table(path):
+    out, key = {}, None
+    for line in open(path, encoding='utf-8', errors='ignore'):
+        line = line.rstrip('\n')
+        m = re.match(r'#org\s+@NAME_(\w+)', line)
+        if m:
+            key = m.group(1)
+            continue
+        if key is not None and line.strip():
+            out[key.replace('_', '')] = line.strip()
+            key = None
+    return out
+
+
+MOVE_NAMES = load_string_table(os.path.join(CFRU, 'strings/attack_name_table.string'))
+
+
+def move_name(c):
+    k = c[5:].replace('_', '')
+    return MOVE_NAMES.get(k, c[5:].replace('_', ' ').title())
+
+
+def keyed_blocks(src, pattern):
+    keys = list(re.finditer(pattern, src))
+    for i, m in enumerate(keys):
+        end = keys[i + 1].start() if i + 1 < len(keys) else len(src)
+        yield m.group(1), src[m.end():end]
+
+
+# ---------------------------------------------------------------- moves
+def build_moves():
+    src = open(os.path.join(CFRU, 'src/Tables/battle_moves.c'),
+               encoding='utf-8', errors='ignore').read()
+    body = re.search(r'gBattleMoves\[[^\]]*\]\s*=\s*\{(.*?)\n\};', src, re.S)
+    body = body.group(1) if body else src
+    out, order = {}, []
+    for const, blk in keyed_blocks(body, r'\[(MOVE_\w+)\]\s*=\s*\n?\s*\{'):
+        if const == 'MOVE_NONE':
+            continue
+
+        def g(field, cast=int, default=0):
+            m = re.search(r'\.%s\s*=\s*([\w]+)' % field, blk)
+            if not m:
+                return default
+            try:
+                return cast(m.group(1))
+            except ValueError:
+                return default
+
+        t = re.search(r'\.type\s*=\s*(TYPE_\w+)', blk)
+        sp = re.search(r'\.split\s*=\s*SPLIT_(\w+)', blk)
+        rec = {
+            'n': move_name(const),
+            't': t.group(1)[5:].title() if t else 'Normal',
+            'p': g('power'), 'a': g('accuracy'), 'pp': g('pp'),
+            'pr': int(re.search(r'\.priority\s*=\s*(-?\d+)', blk).group(1))
+            if re.search(r'\.priority\s*=\s*(-?\d+)', blk) else 0,
+            'c': (sp.group(1).title() if sp else 'Status'),
+            'sec': g('secondaryEffectChance'),
+        }
+        out[const] = rec
+        order.append(const)
+    return out, order
+
+
+# ---------------------------------------------------------------- type chart
+MUL = {'TYPE_MUL_NO_EFFECT': 0, 'TYPE_MUL_NOT_EFFECTIVE': 5,
+       'TYPE_MUL_SUPER_EFFECTIVE': 20, 'TYPE_MUL_NORMAL': 10}
+
+
+def build_typechart():
+    src = open(os.path.join(CFRU, 'src/Tables/type_tables.h'),
+               encoding='utf-8', errors='ignore').read()
+    body = re.search(r'gTypeEffectiveness\[[^\]]*\]\[[^\]]*\]\s*=\s*\{(.*)\n\};', src, re.S)
+    body = body.group(1) if body else src
+    chart = {}
+    for atk, blk in keyed_blocks(body, r'\[(TYPE_\w+)\]\s*=\s*\n?\s*\{'):
+        row = {}
+        for d, mul in re.findall(r'\[(TYPE_\w+)\]\s*=\s*(TYPE_MUL_\w+)', blk):
+            row[d[5:].title()] = MUL[mul]
+        if row:
+            chart[atk[5:].title()] = row
+
+    order = {}
+    hdr = open(os.path.join(CFRU, 'include/constants/pokemon.h'),
+               encoding='utf-8', errors='ignore').read()
+    for m in re.finditer(r'#define\s+(TYPE_\w+)\s+(\d+)', hdr):
+        order[m.group(1)] = int(m.group(2))
+    # TYPE_MYSTERY / TYPE_ROOSTLESS and friends are internal markers, not types
+    # anything can be. Keep only what a Pokemon can actually be.
+    skip = {'TYPE_MYSTERY', 'TYPE_ROOSTLESS', 'TYPE_NONE', 'TYPE_BLANK',
+            'TYPE_NAME_LENGTH', 'TYPE_COUNT'}
+    names = [k[5:].title() for k, v in sorted(order.items(), key=lambda kv: kv[1])
+             if v < 100 and k not in skip]
+    seen, uniq = set(), []
+    for n in names:
+        if n not in seen:
+            seen.add(n)
+            uniq.append(n)
+    return {'names': uniq, 'chart': chart}
+
+
+moves, order = build_moves()
+tc = build_typechart()
+json.dump({'moves': moves, 'order': order, 'tc': tc},
+          open(os.path.join(OUT, 'battle.json'), 'w'))
+
+import collections
+cat = collections.Counter(m['c'] for m in moves.values())
+print(f'moves={len(moves)} categories={dict(cat)}')
+print(f'types={len(tc["names"])} -> {tc["names"]}')
+print('matchups=', sum(len(v) for v in tc['chart'].values()))
+
+
+def mul(a, d):
+    return tc['chart'].get(a, {}).get(d, 10) / 10
+
+
+CHECKS = [
+    ('Dragon', 'Fairy', 0), ('Steel', 'Fairy', 2), ('Dark', 'Fairy', 0.5),
+    ('Fairy', 'Dragon', 2), ('Fairy', 'Dark', 2), ('Fairy', 'Fighting', 2),
+    ('Fairy', 'Poison', 0.5), ('Fairy', 'Steel', 0.5), ('Fairy', 'Fire', 0.5),
+    ('Steel', 'Ghost', 1), ('Steel', 'Dark', 1),          # Gen VI removed these resists
+    ('Ghost', 'Steel', 1),                                 # and this one
+    ('Normal', 'Ghost', 0), ('Ground', 'Flying', 0), ('Psychic', 'Dark', 0),
+    ('Fire', 'Grass', 2), ('Water', 'Fire', 2), ('Electric', 'Ground', 0),
+    ('Poison', 'Steel', 0), ('Bug', 'Fairy', 0.5),
+]
+bad = [(a, d, mul(a, d), w) for a, d, w in CHECKS if mul(a, d) != w]
+print('type chart checks:', 'all %d pass' % len(CHECKS) if not bad else 'FAIL %r' % bad)
+for m in ('MOVE_SURF', 'MOVE_CRABHAMMER', 'MOVE_KNOCKOFF', 'MOVE_PLAYROUGH'):
+    if m in moves:
+        print(' ', m, moves[m])
+print('size KB:', os.path.getsize(os.path.join(OUT, 'battle.json')) // 1024)
