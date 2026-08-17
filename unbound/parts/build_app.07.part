@@ -1,0 +1,169 @@
+          x.hs.length?` · carries ${x.hs.join(', ')}`:''} · offence and speed beat ${x.use}%</div>
+      </div>`).join('')}</div>
+      <div class="mut" style="font-size:12px;margin-top:12px">Covers ${t.types.size} of ${T.length} types and
+        ${t.hms.size} of ${t.allHM.length} HMs.${
+        t.allHM.filter(h=>!t.hms.has(h.n)).length?` Still missing: ${
+          t.allHM.filter(h=>!t.hms.has(h.n)).map(h=>h.mv).join(', ')}.`:''}</div></div></div>
+
+    <div class="card"><div class="ghd"><h2>Who can carry the HMs</h2>
+      <p class="mut" style="margin-top:8px;font-size:14px;max-width:72ch">Unbound has ${hms.length} HMs
+      (${hms.map(h=>h.mv).join(', ')}). Every one you hand a team member costs an attacking slot, so the fewer
+      Pokémon you need to cover them, the better.</p></div>
+      <div class="gsec"><div class="mons">${rows.slice(0,16).map(r=>`
+        <button class="mon" data-sp="${esc(r.n)}" style="${tint(r.n)}">${sprite(r.n,44)}
+          <div class="who"><b>${esc(r.n)}</b>
+            <span class="mut" style="font-size:11px">${r.got.map(h=>h.mv).join(' · ')}</span></div>
+          <div class="pc">${r.c}/${hms.length}</div></button>`).join('')}</div></div></div>`;
+  wire();
+}
+
+/* ---------------- ask ----------------
+   Plain-language questions answered out of the same tables the rest of the app
+   uses. No model behind it: the question is matched against location names,
+   species names and a handful of intents, and every number in the answer is a
+   real lookup. It says what it understood so a wrong match is obvious. */
+const STOP=new Set(['the','a','an','in','at','on','of','for','to','and','or','is','are','im',
+  'i','me','my','can','there','here','what','where','which','how','do','does','you','some','any',
+  'it','its','this','that','be','with','near','from','was','were','they','them','have','has','get',
+  'first','second','third','gym','after','before','around','north','south','east','west','up','down',
+  'right','left','side','area','place','pokemon','pokémon','mon','mons','tell','show','list','give']);
+function norm(s){return s.toLowerCase().replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim()}
+function toks(s){return norm(s).split(' ').filter(w=>w&&!STOP.has(w))}
+
+// Scoring a name against the question. A candidate must share at least one
+// whole word -- a loose prefix match alone once made "asdkjhasd nonsense"
+// confidently resolve to Auburn Waterway. Coverage of the candidate's own name
+// is rewarded so "Route 2" beats "Route 21" on the words that are actually there.
+function nameScore(name,qt){
+  const nt=norm(name).split(' ').filter(Boolean);
+  if(!nt.length||!qt.length) return 0;
+  let whole=0, part=0;
+  for(const w of qt){
+    if(nt.includes(w)) whole++;
+    else if(w.length>=5&&nt.some(n=>n.length>=5&&(n.startsWith(w)||w.startsWith(n)))) part+=0.5;
+  }
+  if(!whole) return 0;
+  return whole+part+(whole+part)/nt.length;
+}
+// An exact name sitting inside the question is worth more than any fuzzy score:
+// "where can i catch larvitar" is about Larvitar, not about a route that happens
+// to share a word with the rest of the sentence.
+function exactIn(q,name){
+  const n=norm(name);
+  if(n.length<4) return false;
+  return new RegExp('(^| )'+n.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'( |$)').test(q);
+}
+function bestLoc(qt,q){
+  const scored=[];
+  for(const m of D.maps){
+    if(q&&exactIn(q,m.name)) return {m,s:99,alts:[]};
+    const s=nameScore(m.name,qt);
+    if(s>=1.25) scored.push({m,s});
+  }
+  scored.sort((a,b)=>b.s-a.s);
+  if(!scored.length) return null;
+  // near-ties are genuine ambiguity, so offer them rather than picking silently
+  const top=scored[0];
+  top.alts=scored.slice(1).filter(x=>x.s>=top.s-0.45).slice(0,4).map(x=>x.m.name);
+  return top;
+}
+function bestSpecies(qt,q){
+  const out=[];
+  for(const n in M){
+    if(q&&exactIn(q,n)){ out.push({n,s:99}); continue }
+    const s=nameScore(n,qt);
+    if(s>=1.6) out.push({n,s});
+  }
+  out.sort((a,b)=>b.s-a.s);
+  return out.slice(0,3);
+}
+function bestBoss(qt,q){
+  let best=null;
+  for(const b of D.bosses){
+    if(q&&exactIn(q,b.n)) return {b,s:99};
+    const s=nameScore(b.n,qt);
+    if(s>=1.6&&(!best||s>best.s)) best={b,s};
+  }
+  return best;
+}
+const INTENT=[
+  ['rare',    /\brare|rarest|hard(est)? to (find|get|catch)|uncommon|lowest (rate|odds|chance)/],
+  ['common',  /\bcommon|easiest|most likely|best (odds|chance)|highest rate/],
+  ['strong',  /\bstrong|best|top|powerful|good(?!bye)|highest bst|hardest hitting/],
+  ['counter', /\bbeat|counter|weak(ness)?(es)?|super effective|resist|good against|use against/],
+  ['where',   /\bwhere|find|catch|locate|obtain/],
+];
+function detect(q){
+  const out=new Set();
+  for(const [k,re] of INTENT) if(re.test(q.toLowerCase())) out.add(k);
+  return out;
+}
+function locRows(m){
+  const rows=[];
+  for(const k in m.methods) for(const r of m.methods[k].rows)
+    rows.push({...r,label:m.methods[k].label,rate:m.methods[k].rate});
+  return rows;
+}
+function monLine(r,extra){
+  return `<button class="mon" data-sp="${esc(r.s)}" style="${tint(r.s)}">${sprite(r.s,44)}
+    <div class="who"><b>${esc(r.s)}</b><span class="mut" style="font-size:11.5px">${
+      esc(extra||r.label)}</span></div>
+    <div class="lv">Lv ${r.min===r.max?r.min:r.min+'–'+r.max}</div>
+    <div class="bar"><i style="width:${Math.max(r.pct,2)}%"></i></div>
+    <div class="pc">${r.pct}%</div></button>`;
+}
+function whereElse(name,exclude){
+  const w=(WHERE[name]||[]).filter(x=>x.loc!==exclude);
+  if(!w.length) return '<span class="mut">nowhere else in the wild</span>';
+  return w.slice(0,4).map(x=>`<button class="minipill" data-loc="${esc(x.loc)}">${esc(x.loc)}
+    <i>${x.pct}%</i></button>`).join('')+(w.length>4?`<span class="mut" style="font-size:11px">
+    +${w.length-4} more</span>`:'');
+}
+function answer(q){
+  const qt=toks(q), want=detect(q);
+  if(!qt.length) return {head:'Ask me something',body:
+    '<div class="mut">Try naming a place, a Pokémon or a trainer.</div>'};
+  const nq=norm(q);
+  const loc=bestLoc(qt,nq), sp=bestSpecies(qt,nq), boss=bestBoss(qt,nq);
+  // A named Pokemon or trainer outranks a place unless the place was named
+  // outright too -- "what beats mimikyu" is not a question about a route.
+  const spExact=sp.length&&sp[0].s===99, locExact=loc&&loc.s===99;
+  const preferSpecies = spExact && (!locExact) &&
+    (want.has('counter')||want.has('where')||!loc||loc.s<99);
+  const parts=[]; let head='', sure='';
+
+  // a trainer beats a place: "how do i beat Mirskle" is unambiguous
+  if(boss&&(boss.s===99||want.has('counter')||!loc)){
+    const b=boss.b;
+    head=`Beating ${b.n}`;
+    sure=`Matched the ${b.c.toLowerCase()} <b>${esc(b.n)}</b>${b.w?` at ${esc(b.w)}`:''}
+      — ${b.mode} roster, ${b.p.length} Pokémon up to Lv ${b.lv}.`;
+    parts.push(`<div class="party">${b.p.map(p=>`<button class="pm" ${M[p.s]?`data-sp="${esc(p.s)}"`:''}>
+      ${sprite(p.s,48)}<span>${esc(p.s)}</span><i>Lv${p.l}</i></button>`).join('')}</div>`);
+    parts.push(planBlock(b.p,b.lv).replace('<details class="plan"','<details open class="plan"'));
+    return {head,sure,body:parts.join('')};
+  }
+
+  if(loc&&!preferSpecies){
+    const m=loc.m, rows=locRows(m);
+    head=m.name;
+    sure=`Matched <b>${esc(m.name)}</b> — ${rows.length} entries across ${
+      Object.keys(m.methods).length} method${Object.keys(m.methods).length===1?'':'s'}.${
+      m.unnamed?' This area has no documented name; the encounter data is real, the name is not known.':
+      m.inferred?` Listed as a sub-area of ${esc(m.near)}.`:''}${
+      loc.alts&&loc.alts.length?`<div class="alts">Or did you mean ${loc.alts.map(a=>
+        `<button class="minipill" data-ask="${esc(a)}">${esc(a)}</button>`).join('')}</div>`:''}`;
+    if(want.has('strong')){
+      const byBst=[...rows].sort((a,b)=>bstOf(b.s)-bstOf(a.s));
+      parts.push(`<h4>Strongest things here</h4><div class="mons">${
+        byBst.slice(0,6).map(r=>monLine(r,`${r.label} · BST ${bstOf(r.s)}`)).join('')}</div>`);
+    }
+    if(want.has('rare')||(!want.has('common')&&!want.has('strong'))){
+      const rare=[...rows].sort((a,b)=>a.pct-b.pct).slice(0,6);
+      parts.push(`<h4>Rarest here</h4><div class="mons">${
+        rare.map(r=>monLine(r)).join('')}</div>`);
+      if(want.has('where')||/\bthem\b|\belse\b/i.test(q)){
+        // one line per species, not per slot: a Pokemon in both the grass and
+        // the water here is still one Pokemon to go looking for elsewhere
+        const uniq=[...new Set(rare.map(r=>r.s))];
+        parts.push(`<h4>Where else those turn up</h4>${uniq.map(n=>
