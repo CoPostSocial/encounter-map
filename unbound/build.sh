@@ -18,7 +18,6 @@ CFRU_SHA=b637a27898b14e25dd24d0f69a3e302f0069deb8  # the commit Unbound 2.1.1.1 
 YDEX_SHA=abc2ccc0985bb5b31dac2d60118d54c310a15821  # community encounter table
 FG_SHA=d668b78bcd223ea177086de4e1141abbcc32b0a1    # community trainer transcription
 UG_SHA=main                                        # community location names
-PAYLOAD_SHA256=b2f310c7790cbdee7afbc1616b2badf03dcc45a551ba2ad9d5ebc38202b1d5fc
 
 say() { echo "$@"; echo "$@" >> "$ROOT/.log"; }
 : > "$ROOT/.log"
@@ -33,17 +32,26 @@ pip install --quiet --disable-pip-version-check Pillow
 say "python $(python3 -V 2>&1) pillow ok"
 
 # ---- reassemble the build scripts ------------------------------------------
-# Same reason as the Hoenn atlas: pushing 100 KB of Python through a file API a
-# chunk at a time invites silent transcription loss, so it ships as one gzipped
-# tar split into base64 parts and is checked before anything runs.
-cat "$ROOT"/payload/part*.b64 | tr -d '[:space:]' | base64 -d > "$UBROOT/scripts.tgz"
-GOT=$(sha256sum "$UBROOT/scripts.tgz" | cut -d' ' -f1)
-if [ "$GOT" != "$PAYLOAD_SHA256" ]; then
-  say "PAYLOAD MISMATCH: want $PAYLOAD_SHA256 got $GOT"
-  exit 1
-fi
-tar xzf "$UBROOT/scripts.tgz" -C "$UBROOT"
-say "payload verified $GOT"
+# The pipeline is ~100 KB of Python and the file API this repo is written
+# through truncates large writes silently -- a 14 KB push arrived as 5.5 KB
+# once. So each script ships as ordered <8.6 KB parts and is checksummed after
+# reassembly. A short read now fails the build instead of producing a subtly
+# wrong site.
+check_script() { # name expected-sha256
+  cat "$ROOT"/parts/"$1".*.part > "$UBROOT/$1.py"
+  local got
+  got=$(sha256sum "$UBROOT/$1.py" | cut -d' ' -f1)
+  if [ "$got" != "$2" ]; then
+    say "SCRIPT MISMATCH $1: want $2 got $got"
+    exit 1
+  fi
+  say "  $1.py $(wc -c < "$UBROOT/$1.py") bytes ok"
+}
+check_script build_species 6b218da8741219c2ebf0b71148caa2852dcbb88eae9493a0797da1ecf5f53e90
+check_script build_battle  35cf42c0bb78177f36f3768653cbb098e4f7ad965a4cf785648609f1ac4e85e7
+check_script build_world   78f7aae2ac73451a00ae4d168ee494f50a12334d6474f063bc781e5f38b7e974
+check_script build_sprites bab889315631643edcc6ed89e5b6e182ad5795917c764a5385b6f9813bc3b5de
+check_script build_app     aca39785f41def33e1aaaed5ffaba61364fca707ef05323f1d43a804a14ec900
 
 # ---- pinned sources --------------------------------------------------------
 # The author's species tables. Cloned rather than fetched file by file because
