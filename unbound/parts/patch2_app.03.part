@@ -1,0 +1,174 @@
+    return m.hp!==undefined&&!m.mega&&SPR.index[n]!==undefined&&availBadge(n)<=cap;
+  });
+}
+// What the bench currently does: the best multiplier it can put on each type,
+// and how many members fold to each type coming the other way.
+function teamProfile(names){
+  const off={}, def={};
+  for(const t of TCH.names){
+    let bo=0, weak=0, res=0;
+    for(const n of names){
+      bo=Math.max(bo,Math.max(...types(n).map(a=>tmul(a,t))));
+      const v=vsMon(t,n);
+      if(v>1) weak++; else if(v<1) res++;
+    }
+    off[t]=names.length?bo:0;
+    def[t]={weak,res};
+  }
+  return {off,def};
+}
+const HMS=hmTable().hms;
+function hmsOf(n){return M[n]&&M[n].tm?HMS.filter(h=>knowsTM(n,h.i)):[]}
+function teamHMs(names){
+  const s=new Set();
+  for(const n of names) for(const h of hmsOf(n)) s.add(h.n);
+  return s;
+}
+function bossByName(n){return D.bosses.find(b=>b.n+' · '+b.c===n)||null}
+function scoreCandidate(c,P,have,hms,boss){
+  const ct=types(c), m=M[c];
+  let sc=0; const why=[], but=[];
+  // a type nothing on the bench can hit hard is the gap worth filling first
+  const newT=[];
+  for(const t of TCH.names){
+    const best=Math.max(...ct.map(a=>tmul(a,t)));
+    if(best>=2&&P.off[t]<2) newT.push(t);
+  }
+  sc+=newT.length*11;
+  // with an empty bench everything "covers what nothing else does", so say the
+  // useful thing instead: how much of the chart it handles on its own
+  if(newT.length) why.push(have.length
+    ? `hits ${newT.slice(0,3).join(', ')}${newT.length>3?` +${newT.length-3}`:''} that nothing else does`
+    : `hits ${newT.length} of the 18 types for double on its own`);
+  // a weakness most of the bench shares is worth answering
+  const need=Math.max(2,Math.ceil(have.length/2));
+  const fixed=[];
+  for(const t of TCH.names) if(P.def[t].weak>=need&&vsTypes(t,ct)<1) fixed.push(t);
+  sc+=fixed.length*9;
+  if(fixed.length) why.push(`resists ${fixed.slice(0,3).join(', ')}, which ${
+    P.def[fixed[0]].weak} of your ${have.length} fold to`);
+  // and piling on a shared weakness is worth avoiding
+  let piles=0;
+  for(const t of TCH.names) if(P.def[t].weak>=need&&vsTypes(t,ct)>1) piles++;
+  sc-=piles*5;
+  if(piles) but.push(`also folds to ${piles} type${piles===1?'':'s'} the bench already struggles with`);
+  // Duplicate typing is the main thing that makes a six look like a three, and
+  // it compounds: a second Ice is a lean, a third is a liability. Without the
+  // escalation a boss-focused plan happily stacks three of whatever is super
+  // effective and folds to the one thing that answers them all.
+  let dup=0, dupW=0;
+  for(const t of ct){
+    const k=have.filter(n=>types(n).includes(t)).length;
+    if(k){dup++; dupW+=k===1?13:34}
+  }
+  sc-=dupW;
+  if(dup&&have.length) but.push(`shares ${dup===1?'a type':'both types'} with the bench`);
+  // raw ability, at a lower weight than coverage
+  const off=Math.max(statPct(RANK.atk,m.atk||0),statPct(RANK.spa,m.spa||0));
+  sc+=off*0.22+statPct(RANK.spe,m.spe||0)*0.1+statPct(RANK.bst,m.bst||0)*0.12;
+  // an HM nobody can carry costs a move slot on someone -- better it be someone
+  // you were bringing anyway
+  const newHM=hmsOf(c).filter(h=>!hms.has(h.n));
+  sc+=newHM.length*5;
+  if(newHM.length&&have.length) why.push(`carries ${newHM.map(h=>h.mv).slice(0,2).join(', ')}`);
+  if(boss){
+    let hit=0,back=0;
+    for(const p of boss.p){
+      if(!M[p.s]) continue;
+      hit+=Math.max(...ct.map(a=>vsTypes(a,types(p.s))));
+      back+=Math.max(...types(p.s).map(a=>vsTypes(a,ct)));
+    }
+    const k=boss.p.filter(p=>M[p.s]).length||1;
+    hit/=k; back/=k;
+    sc+=(hit-1)*44-(back-1)*24;
+    if(hit>=1.4) why.unshift(`hits ${Math.round(hit*100)/100}× on average into ${boss.n}'s party`);
+    else if(back<=0.85) why.unshift(`takes ${Math.round(back*100)/100}× back from ${boss.n}'s party`);
+  }
+  // you are building a run, not an end-game box: something you can have now is
+  // worth more than something that arrives after the eighth badge
+  const b=availBadge(c);
+  sc-=Math.min(b,8)*1.6;
+  return {n:c,sc,why,but,badge:b,off,route:acqRoute(c)};
+}
+function suggest(limit){
+  const have=team.slice(), P=teamProfile(have), hms=teamHMs(have);
+  const boss=teamTarget?bossByName(teamTarget):null;
+  const out=[];
+  for(const c of teamPool()){
+    if(have.includes(c)) continue;
+    // an evolution of someone already on the bench is the same slot, not a new one
+    if(have.some(h=>evoRoot(h)===evoRoot(c))) continue;
+    out.push(scoreCandidate(c,P,have,hms,boss));
+  }
+  out.sort((a,b)=>b.sc-a.sc||a.badge-b.badge||a.n.localeCompare(b.n));
+  // Toxtricity and Toxtricity Low Key are the same suggestion twice; so are a
+  // species and its own next stage. One per family.
+  const seen=new Set(), picked=[];
+  for(const x of out){
+    const fam=evoRoot(x.n);
+    if(seen.has(fam)) continue;
+    seen.add(fam); picked.push(x);
+    if(picked.length>=(limit||12)) break;
+  }
+  return picked;
+}
+function covChip(t,P){
+  const o=P.off[t], w=P.def[t].weak;
+  const cls=o>=2?'good':o>=1?'ok':'bad';
+  return `<div class="covc ${cls}" title="${t}: best ${o||0}× into it, ${w} weak to it">
+    <span class="covt" style="${tcStyle(t)}">${tcAbbr(t)}</span>
+    <span class="covo">${o>=2?'2×':o>=1?'1×':'—'}</span>
+    <span class="covw">${w?`${w} weak`:'safe'}</span></div>`;
+}
+function teamSlot(n,i){
+  if(!n) return `<div class="tslot empty"><span>${i+1}</span><em>empty</em></div>`;
+  const r=role(n), b=availBadge(n), late=b>teamBadges;
+  return `<div class="tslot${late?' late':''}" style="${cardTint(n)}">
+    <button class="tdrop" data-drop="${esc(n)}" title="Remove">✕</button>
+    <button class="tface" data-sp="${esc(n)}">${sprite(n,56)}
+      <b>${esc(n)}</b>${badges(n)}
+      <span class="mut" style="font-size:10.5px">${r?esc(r.text):''}</span>
+      ${late?`<span class="tlate">not until ${b>=9?'— route unknown':`${b} badge${b===1?'':'s'}`}</span>`:''}
+    </button></div>`;
+}
+function drawTeam(){
+  const P=teamProfile(team), boss=teamTarget?bossByName(teamTarget):null;
+  const sug=team.length<6?suggest(12):[];
+  const hms=teamHMs(team);
+  const missHM=HMS.filter(h=>!hms.has(h.n));
+  const bosses=[...D.bosses].sort((a,b)=>a.lv-b.lv);
+  document.getElementById('teamlist').innerHTML=`
+    <div class="card"><div class="ghd"><h2>Lineup builder</h2>
+      <p class="mut" style="margin-top:8px;font-size:14px;max-width:74ch">Pick one, and every suggestion
+      after it is scored against what is already on the bench — a type nothing can hit, a weakness half of
+      you shares, an HM nobody carries. Point it at a boss and it scores against that party instead.</p></div>
+      <div class="gsec">
+        <div class="tbar">
+          <label class="tlab">Planning for
+            <select class="sel" id="ttarget">
+              <option value="">the whole game</option>
+              ${bosses.map(b=>{const k=b.n+' · '+b.c;
+                return `<option value="${esc(k)}" ${k===teamTarget?'selected':''}>${
+                  b.gym?`Gym ${b.gym} — `:''}${esc(b.n)} · ${esc(b.c)} · Lv ${b.lv}</option>`}).join('')}
+            </select></label>
+          <label class="tlab">Badges
+            <span class="tbadges" id="tbadges">${[0,1,2,3,4,5,6,7,8].map(b=>
+              `<button data-badge="${b}" aria-pressed="${teamBadges===b}">${b}</button>`).join('')}</span>
+          </label>
+          ${team.length?`<button class="chip clearf" id="tclear">Clear the bench</button>`:''}
+        </div>
+        <div class="tslots">${[0,1,2,3,4,5].map(i=>teamSlot(team[i],i)).join('')}</div>
+        ${team.length?`<div class="cover">${TCH.names.map(t=>covChip(t,P)).join('')}</div>
+          <div class="mut" style="font-size:11.5px;margin-top:8px">Coverage is by species type, not by
+            movepool — a Gyarados that learns Ice Fang is not counted as Ice here. ${
+            missHM.length?`Nobody carries ${missHM.map(h=>h.mv).join(', ')}.`:'Every HM is covered.'}</div>`
+          :'<div class="mut" style="font-size:13px">Add anyone to start — search below, or take one of the openers.</div>'}
+      </div></div>
+
+    <div class="card"><div class="ghd"><h2>${team.length?'What to add next':'Good places to start'}</h2>
+      <p class="mut" style="margin-top:8px;font-size:13.5px;max-width:74ch">${
+        boss?`Scored against <b>${esc(boss.n)}</b> — ${boss.p.length} Pokémon up to Lv ${boss.lv}.`
+        :'Scored on coverage, then on power.'} Only what you could have with
+        <b>${teamBadges}</b> badge${teamBadges===1?'':'s'}${
+        teamBadges<8?' — raise that to see later options':''}.</p></div>
+      <div class="gsec">

@@ -1,77 +1,163 @@
+  if(w.length>3) out.push(`<div class="mut" style="font-size:11.5px">+${w.length-3} more wild spots below</div>`);
+  for(const r of ACQ[n]||[]) out.push(acqRow(r.k,esc(r.m),
+    r.w?esc(r.w):'', [r.d?esc(r.d):'', r.more?`+${r.more} more dens`:''].filter(Boolean).join(' · ')));
+  return out;
+}
+function acqHas(n){return (WHERE[n]||[]).length>0||(ACQ[n]||[]).length>0}
+// Walk back through forms and pre-evolutions until something is actually
+// obtainable, so the answer ends somewhere you can stand.
+function acqRoute(n){
+  const steps=[], seen=new Set([n]); let cur=n;
+  for(let g=0;g<7;g++){
+    const f=FORMOF[cur];
+    const p=f||(PRE[cur]||[])[0];
+    if(!p||seen.has(p.n)) break;
+    steps.unshift({from:p.n,to:cur,how:f?f.how:p.how});
+    seen.add(p.n); cur=p.n;
+    if(acqHas(cur)) break;
+  }
+  return {steps,root:cur,rooted:acqHas(cur)};
+}
+function acqSection(name){
+  const direct=acqDirect(name), rt=acqRoute(name);
+  const parts=[];
+  if(direct.length) parts.push(`<div class="acqlist">${direct.join('')}</div>`);
+  if(rt.steps.length){
+    const chain=rt.steps.map(st=>
+      `<div class="acqstep"><button class="linkish" data-sp="${esc(st.from)}">${esc(st.from)}</button>
+        <span class="acqhow">${esc(st.how)}</span>
+        <span class="acqto">→ ${esc(st.to)}</span></div>`).join('');
+    parts.push(`<div class="acqevo">
+      <div class="acqevohd">${direct.length?'Or evolve into it':'Not catchable — evolve into it'}</div>
+      ${rt.rooted
+        ? `<div class="mut" style="font-size:12px;margin-bottom:8px">Start with
+            <button class="linkish" data-sp="${esc(rt.root)}">${esc(rt.root)}</button> —
+            ${(WHERE[rt.root]||[]).length?'catchable in the wild':'not in the grass either'}, here is how:</div>`
+        : `<div class="mut" style="font-size:12px;margin-bottom:8px">Nothing in the line has a documented
+            way in either, so ${esc(rt.root)} is likely a gift, a trade or an event this data does not
+            cover.</div>`}
+      ${chain}
+      ${rt.rooted?`<div class="acqlist" style="margin-top:10px">${acqDirect(rt.root).join('')}</div>`:''}
+    </div>`);
+  }
+  if(!parts.length){
+    // The Frontier's shop is the catch-all: it sells by name, which is the only
+    // documented route to a lot of the roster -- every old starter included.
+    // Its availability line is quoted rather than paraphrased, because the guide
+    // marks it Demo Only and that is the whole answer.
+    const shops=(D.specials||{}).pokeshops||[];
+    parts.push(`<div class="mut" style="font-size:13px">Nothing documents a route to this one: it is in
+      the game's species table but appears in no encounter table, no raid den, and no gift, trade or prize
+      list, and nothing evolves into it.</div>
+      ${shops.length?`<div class="acqevo" style="margin-top:12px">
+        <div class="acqevohd">The one place that sells anything</div>
+        <div class="acqlist">${shops.map(x=>acqRow('shop',esc(x.n),esc(x.w),
+          `${esc(x.d)} · ${esc(x.cost)} · <b>${esc(x.avail)}</b>`)).join('')}</div>
+        <div class="mut" style="font-size:11.5px;margin-top:8px">Both shops are logged as
+          <b>Demo Only</b> in the Frontier documentation — that is the standalone Battle Frontier demo,
+          not the main story. So on a main-game save this may genuinely have no route, and the honest
+          answer is that none of the three sources behind this site records one.</div></div>`:''}`);
+  }
+  return `<div class="sec"><div class="sechd"><h3>How to get it</h3>
+    <span class="mut" style="font-size:11.5px">${
+      (WHERE[name]||[]).length?'catchable in the wild'
+      :(ACQ[name]||[]).length?'not in the grass — see below'
+      :rt.steps.length?'evolution only':'no documented route'}</span></div>${parts.join('')}</div>`;
+'''),
+(882, 882, r'''    ${acqSection(name)}
+'''),
+(1229, 1231, r'''        <span class="mut" style="font-size:11.5px">${methBlocks(m).length} method${
+          methBlocks(m).length===1?'':'s'}</span>
+'''),
+(1232, 1239, r'''        ${methBlocks(m).map(b=>methSection(b,40)).join('')}
+'''),
+(1317, 1320, r'''  markPlace(n);
+  drawerOpen('Place',n,placePanel(n));
+  writeHash();
+}
+
+// Encounter methods come out of the table in whatever order the source listed
+// them, which put a night grass block between two fishing blocks. Grass first,
+// then the rest of the land, then water, then the rods in rod order -- and each
+// block gets its own heading rather than repeating the method on every row.
+const METHORD=['tall grass','grass','long grass','dark grass','cave','rock smash','headbutt',
+  'surf','surfing','old rod','good rod','super rod','fishing'];
+function methRank(label){
+  const l=label.toLowerCase();
+  for(let i=0;i<METHORD.length;i++) if(l.startsWith(METHORD[i])) return i*10+(/night/.test(l)?1:0);
+  return 900;
+}
+function methBlocks(m){
+  return Object.values(m.methods).sort((a,b)=>
+    methRank(a.label)-methRank(b.label)||a.label.localeCompare(b.label));
+}
+function methSection(b,size){
+  return `<div class="methblk">
+    <div class="methhd"><span class="methname">${esc(b.label)}</span>
+      <span class="methrate">${b.rate}% per step</span>
+      <span class="methn">${b.rows.length} entr${b.rows.length===1?'y':'ies'}</span></div>
+    <div class="mons">${b.rows.map(r=>`<button class="mon" data-sp="${esc(r.s)}" style="${tint(r.s)}">
+      ${sprite(r.s,size||44)}<div class="who"><b>${esc(r.s)}</b>${badges(r.s)}</div>
+      <div class="lv">Lv ${r.min===r.max?r.min:r.min+'–'+r.max}</div>
+      <div class="bar"><i style="width:${Math.max(r.pct,2)}%"></i></div>
+      <div class="pc">${r.pct}%</div></button>`).join('')}</div></div>`;
+'''),
+(1332, 1340, r'''    <div class="sec">${methBlocks(m).map(b=>methSection(b)).join('')}</div>
+'''),
+(2084, 2084, r'''        <div class="src"><span class="tag comm">Community · version-matched</span>
           <h4>How to get things</h4>
           <p>Gifts, statics, NPC trades, raid dens with their star tiers and unlock conditions, Game Corner
           prizes, daily swarms and legendary requirements, from the same field guide's
           <code>acquisition-data.json</code> — itself transcribed from the 2.1.1.1 raid and acquisition
           spreadsheets, which it checksums. ${Object.keys(ACQ).length} species have a documented way in.
           Everything else is reached by evolution, and the app walks the line back for you rather than
-          leaving you to guess.</p></div>
+          leaving you to guess. Where even that runs out, the two Battle Frontier Pokémon shops are quoted
+          from the Frontier documentation — including the line marking them Demo Only, which is the
+          difference between an answer and a wrong one.</p></div>
 '''),
-(2106, 2106, r'''  // leaving the tab a panel belongs to should close it, not strand it open
-  if(v!==view&&document.body.classList.contains('dw')&&!(v==='dex'||v==='locs')){
-    document.getElementById('drawer').classList.remove('open');
-    document.body.classList.remove('dw');
-    selSpecies=null; selLoc=null; selPlace=null;
+(2103, 2103, r'''/* ---------------- lineup builder ----------------
+   Six slots, and every suggestion after the first is scored against what is
+   already on the bench: a type nothing can hit, a weakness half the team shares,
+   an HM nobody carries. Optionally against one specific boss, in which case the
+   badge cap moves to that fight and the scoring becomes about that party.
+
+   The offensive model is a species' own types, not its movepool. That is a
+   simplification and the app says so -- a Gyarados with Ice Fang is not modelled
+   as Ice coverage -- but it is the honest version of a suggestion tool that has
+   learnsets and no way to know what four moves you actually carry. */
+let team=[], teamTarget='', teamBadges=8;
+
+// When can you actually have this thing? Wild levels date an area against the
+// gyms; raid dens and gifts say so in words; anything only reachable by
+// evolving costs a badge per stage, which is a guess and is labelled as one.
+const AVAILB={};
+function badgeFromLv(lv){return Math.max(0,gymStage(lv)-1)}
+function directBadge(n){
+  let best=99;
+  for(const x of WHERE[n]||[]) if(x.min>0) best=Math.min(best,badgeFromLv(x.min));
+  for(const r of ACQ[n]||[]){
+    const txt=`${r.d||''} ${r.w||''}`;
+    const m=txt.match(/after (\d)\s*badges?/i);
+    let b;
+    if(m) b=+m[1];
+    else if(/post-?game|elite four|champion/i.test(txt)) b=8;
+    else if(r.k==='legend') b=7;
+    else b=0;
+    best=Math.min(best,b);
   }
-'''),
-(2131, 2131, r'''  const was=selSpecies;
-'''),
-(2132, 2135, r'''  drawerOpen(dexNo(n)||'Pokémon',n,speciesPanel(n));
-  // only the two affected cards need their marker moved, but the grid is
-  // virtualised anyway so a redraw is cheaper than hunting for them
-  if(was!==n) drawDex();
-  writeHash();
-'''),
-(2139, 2142, r'''  drawerOpen('Area',n,locPanel(n));
-  writeHash();
-'''),
-(2143, 2143, r'''/* ---------------- detail drawer ---------------- */
-function drawerOpen(kind,title,html){
-  const d=document.getElementById('drawer');
-  document.getElementById('dwkind').textContent=kind;
-  document.getElementById('dwtitle').textContent=title;
-  const body=document.getElementById('dwbody');
-  body.innerHTML=html;
-  body.scrollTop=0;
-  d.classList.add('open');
-  document.body.classList.add('dw');
-  d.setAttribute('aria-hidden','false');
-  wire();
+  return best;
 }
-function drawerClose(){
-  const d=document.getElementById('drawer');
-  d.classList.remove('open');
-  document.body.classList.remove('dw');
-  d.setAttribute('aria-hidden','true');
-  selSpecies=null; selLoc=null; selPlace=null;
-  // the grid marks the open card, and the map its open region
-  if(view==='dex') drawDex();
-  if(view==='locs'&&locView==='map') markPlace(null);
-  writeHash();
+function availBadge(n){
+  if(AVAILB[n]!==undefined) return AVAILB[n];
+  AVAILB[n]=99;                                  // parked while we recurse
+  let b=directBadge(n);
+  if(b>=99){
+    const p=(PRE[n]||[])[0]||FORMOF[n];
+    if(p) b=Math.min(b,availBadge(p.n)+1);
+  }
+  return AVAILB[n]=Math.min(b,99);
 }
-addEventListener('keydown',e=>{if(e.key==='Escape'&&document.body.classList.contains('dw')) drawerClose()});
-
-'''),
-(2182, 2182, r'''document.getElementById('dwclose').onclick=drawerClose;
-'''),
-(2247, 2248, r''''''),
-(2260, 2261, r''''''),
-(2269, 2269, r'''
-<aside class="drawer" id="drawer" aria-hidden="true" aria-label="Details">
-  <div class="dwhd">
-    <button class="dwx" id="dwclose" title="Close (Esc)" aria-label="Close">✕</button>
-    <div class="dwt" id="dwtitle"></div>
-    <div class="dwk" id="dwkind"></div>
-  </div>
-  <div class="dwbody" id="dwbody"></div>
-</aside>
-'''),
-]
-
-lines = src.splitlines(keepends=True)
-for a1, a2, text in reversed(EDITS):
-    lines[a1:a2] = [text]
-out = ''.join(lines)
-got = hashlib.sha256(out.encode()).hexdigest()
-assert got == WANT, 'patched build_app.py hashes wrong: ' + got
-open(path, 'w', encoding='utf-8').write(out)
-print('patch2_app: build_app.py ->', len(out), 'bytes', got[:12])
+function teamPool(){
+  const cap=teamBadges;
+  return Object.keys(M).filter(n=>{
+    const m=M[n];

@@ -1,3 +1,103 @@
+.linkish{border:0;background:none;font:inherit;font-weight:800;color:var(--acc2);cursor:pointer;
+  padding:0;text-decoration:underline;text-underline-offset:2px}
+.acqevo{margin-top:12px;padding:12px;border-radius:14px;border:1px dashed var(--line2);background:var(--s2)}
+.acqevohd{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;
+  color:var(--ink3);margin-bottom:8px}
+.acqstep{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12.5px;font-weight:700;
+  padding:6px 0}
+.acqstep .acqhow{color:var(--ink2);font-size:11.5px}
+.acqstep .acqto{font-weight:800}
+/* ---------- evolution chain ---------- */
+.evochain{display:flex;align-items:stretch;gap:10px;overflow-x:auto;padding:2px 0 6px}
+.evostage{display:flex;flex-direction:column;gap:8px;justify-content:center;flex:none}
+.evolab{font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;
+  color:var(--ink3);text-align:center}
+.evoarrow{display:flex;align-items:center;justify-content:center;color:var(--ink3);
+  font-size:20px;font-weight:800;flex:none;padding-top:14px}
+.evomon{display:flex;flex-direction:column;align-items:center;gap:2px;padding:10px 12px;
+  border-radius:15px;border:1px solid var(--line);cursor:pointer;font:inherit;text-align:center;
+  min-width:132px;max-width:170px;position:relative;isolation:isolate;overflow:hidden;transition:.14s}
+.evomon::before{content:'';position:absolute;inset:0;z-index:-1;background:var(--g);opacity:.55}
+.evomon:hover{transform:translateY(-2px);box-shadow:0 12px 24px -14px rgba(13,33,54,.45)}
+.evomon b{font-size:13.5px;font-weight:800;line-height:1.2}
+.evomon .how{font-size:10.5px;font-weight:700;color:var(--ink2);line-height:1.35;margin-top:2px}
+.evomon.cur{border-color:var(--acc);box-shadow:0 0 0 2px var(--accSoft)}
+.evomon .youare{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;
+  color:var(--acc2);margin-top:3px}
+'''),
+(550, 550, r'''/* Eight tabs is one more than the header comfortably holds on a tablet, so it
+   tightens and, failing that, scrolls rather than pushing the page sideways. */
+@media(max-width:960px){
+  h1{font-size:14px}
+  .sub{font-size:10.5px}
+  .seg{max-width:100%;overflow-x:auto;scrollbar-width:none}
+  .seg::-webkit-scrollbar{display:none}
+  .seg button{padding:7px 10px;font-size:11.5px;flex:none}
+}
+'''),
+(593, 593, r'''  .tslots{grid-template-columns:repeat(2,1fr)}
+  .sugs{grid-template-columns:1fr}
+  .vsbest,.vsback{width:auto;text-align:left}
+'''),
+(824, 825, r'''/* ---------------- evolution ----------------
+   The game only ever states evolution forwards -- Gastly carries "Level 25 ->
+   Haunter" and Gengar carries nothing -- so a species had no way of knowing what
+   it came from. Inverting the table once at load gives every Pokemon its parents,
+   and from there the whole family can be walked from its root and drawn as one
+   chain, with the species you are looking at marked in it. */
+const PRE={}, FORMOF={};
+for(const n in M){
+  for(const s of M[n].evo||[]){
+    const i=s.lastIndexOf('→'); if(i<0) continue;
+    const to=s.slice(i+1).trim();
+    if(M[to]) (PRE[to] ||= []).push({n,how:s.slice(0,i).trim()});
+  }
+  // The form table is written both ways round -- Gengar lists Gengar Giga and
+  // Gengar Giga lists Gengar right back -- so only keep the link that actually
+  // points at a form, or walking it loops forever between the two.
+  for(const f of M[n].forms||[])
+    if(M[f.to]&&f.to.startsWith(n+' ')) FORMOF[f.to]={n,how:f.how};
+}
+function evoKids(n){
+  const out=[];
+  for(const s of (M[n]||{}).evo||[]){
+    const i=s.lastIndexOf('→'); if(i<0) continue;
+    const to=s.slice(i+1).trim();
+    if(M[to]&&SPR.index[to]!==undefined) out.push({n:to,how:s.slice(0,i).trim()});
+  }
+  return out;
+}
+function evoRoot(n){
+  const seen=new Set([n]);
+  let cur=n;
+  // guarded rather than while(true): a cyclic table would otherwise hang the page
+  for(let g=0;g<8;g++){
+    const p=(PRE[cur]||[])[0];
+    if(!p||seen.has(p.n)) break;
+    seen.add(p.n); cur=p.n;
+  }
+  return cur;
+}
+function evoStages(root){
+  const stages=[[{n:root,how:''}]], seen=new Set([root]);
+  for(let d=0;d<5;d++){
+    const next=[];
+    for(const node of stages[d]) for(const k of evoKids(node.n))
+      if(!seen.has(k.n)){seen.add(k.n); next.push(k)}
+    if(!next.length) break;
+    stages.push(next);
+  }
+  return stages;
+}
+function evoChip(x,cur){
+  return `<button class="evomon${x.n===cur?' cur':''}" data-sp="${esc(x.n)}" style="${cardTint(x.n)}">
+    ${sprite(x.n,52)}<b>${esc(x.n)}</b>
+    ${x.how?`<span class="how">${esc(x.how)}</span>`:''}
+    ${x.n===cur?'<span class="youare">you are here</span>':''}</button>`;
+}
+'''),
+(826, 836, r'''  // a Mega or Gigantamax is not its own family -- show the base form's
+  const base=FORMOF[name]?FORMOF[name].n:name;
   const root=evoRoot(base), stages=evoStages(root);
   const forms=(M[base]||{}).forms||[];
   const single=stages.length===1&&stages[0].length===1;
@@ -44,7 +144,8 @@ const ACQ={};
 }
 const ACQK={wild:['Wild','#2fa36a'],gift:['Gift','#c9702a'],static:['Static','#7a52ea'],
   trade:['Trade','#1587e8'],raid:['Raid','#e8348a'],corner:['Game Corner','#b56d00'],
-  swarm:['Swarm','#0f8f8f'],legend:['Legendary','#8a5b00'],evo:['Evolution','#c02a09']};
+  swarm:['Swarm','#0f8f8f'],legend:['Legendary','#8a5b00'],evo:['Evolution','#c02a09'],
+  shop:['Frontier shop','#5a3fa8']};
 function acqPill(k){
   const [l,c]=ACQK[k]||['Other','#4d6280'];
   return `<span class="acqk" style="background:${c}1f;color:${c};border-color:${c}55">${l}</span>`;
@@ -60,96 +161,3 @@ function acqDirect(n){
   for(const x of w.slice(0,3)) out.push(acqRow('wild',
     `<button class="linkish" data-loc="${esc(x.loc)}">${esc(x.loc)}</button>`,
     `${x.pct}% · Lv ${x.min===x.max?x.min:x.min+'–'+x.max}`, esc(x.label)));
-  if(w.length>3) out.push(`<div class="mut" style="font-size:11.5px">+${w.length-3} more wild spots below</div>`);
-  for(const r of ACQ[n]||[]) out.push(acqRow(r.k,esc(r.m),
-    r.w?esc(r.w):'', [r.d?esc(r.d):'', r.more?`+${r.more} more dens`:''].filter(Boolean).join(' · ')));
-  return out;
-}
-function acqHas(n){return (WHERE[n]||[]).length>0||(ACQ[n]||[]).length>0}
-// Walk back through forms and pre-evolutions until something is actually
-// obtainable, so the answer ends somewhere you can stand.
-function acqRoute(n){
-  const steps=[], seen=new Set([n]); let cur=n;
-  for(let g=0;g<7;g++){
-    const f=FORMOF[cur];
-    const p=f||(PRE[cur]||[])[0];
-    if(!p||seen.has(p.n)) break;
-    steps.unshift({from:p.n,to:cur,how:f?f.how:p.how});
-    seen.add(p.n); cur=p.n;
-    if(acqHas(cur)) break;
-  }
-  return {steps,root:cur,rooted:acqHas(cur)};
-}
-function acqSection(name){
-  const direct=acqDirect(name), rt=acqRoute(name);
-  const parts=[];
-  if(direct.length) parts.push(`<div class="acqlist">${direct.join('')}</div>`);
-  if(rt.steps.length){
-    const chain=rt.steps.map(st=>
-      `<div class="acqstep"><button class="linkish" data-sp="${esc(st.from)}">${esc(st.from)}</button>
-        <span class="acqhow">${esc(st.how)}</span>
-        <span class="acqto">→ ${esc(st.to)}</span></div>`).join('');
-    parts.push(`<div class="acqevo">
-      <div class="acqevohd">${direct.length?'Or evolve into it':'Not catchable — evolve into it'}</div>
-      ${rt.rooted
-        ? `<div class="mut" style="font-size:12px;margin-bottom:8px">Start with
-            <button class="linkish" data-sp="${esc(rt.root)}">${esc(rt.root)}</button> —
-            ${(WHERE[rt.root]||[]).length?'catchable in the wild':'not in the grass either'}, here is how:</div>`
-        : `<div class="mut" style="font-size:12px;margin-bottom:8px">Nothing in the line has a documented
-            way in either, so ${esc(rt.root)} is likely a gift, a trade or an event this data does not
-            cover.</div>`}
-      ${chain}
-      ${rt.rooted?`<div class="acqlist" style="margin-top:10px">${acqDirect(rt.root).join('')}</div>`:''}
-    </div>`);
-  }
-  if(!parts.length) parts.push(`<div class="mut" style="font-size:13px">No documented way to get this one.
-    It is in the game's species table but appears in no encounter table, no raid den, no gift, trade or
-    prize list, and nothing evolves into it — so it is probably an event, a mission reward or a form this
-    data does not describe.</div>`);
-  return `<div class="sec"><div class="sechd"><h3>How to get it</h3>
-    <span class="mut" style="font-size:11.5px">${
-      (WHERE[name]||[]).length?'catchable in the wild'
-      :(ACQ[name]||[]).length?'not in the grass — see below'
-      :rt.steps.length?'evolution only':'no documented route'}</span></div>${parts.join('')}</div>`;
-'''),
-(882, 882, r'''    ${acqSection(name)}
-'''),
-(1229, 1231, r'''        <span class="mut" style="font-size:11.5px">${methBlocks(m).length} method${
-          methBlocks(m).length===1?'':'s'}</span>
-'''),
-(1232, 1239, r'''        ${methBlocks(m).map(b=>methSection(b,40)).join('')}
-'''),
-(1317, 1320, r'''  markPlace(n);
-  drawerOpen('Place',n,placePanel(n));
-  writeHash();
-}
-
-// Encounter methods come out of the table in whatever order the source listed
-// them, which put a night grass block between two fishing blocks. Grass first,
-// then the rest of the land, then water, then the rods in rod order -- and each
-// block gets its own heading rather than repeating the method on every row.
-const METHORD=['tall grass','grass','long grass','dark grass','cave','rock smash','headbutt',
-  'surf','surfing','old rod','good rod','super rod','fishing'];
-function methRank(label){
-  const l=label.toLowerCase();
-  for(let i=0;i<METHORD.length;i++) if(l.startsWith(METHORD[i])) return i*10+(/night/.test(l)?1:0);
-  return 900;
-}
-function methBlocks(m){
-  return Object.values(m.methods).sort((a,b)=>
-    methRank(a.label)-methRank(b.label)||a.label.localeCompare(b.label));
-}
-function methSection(b,size){
-  return `<div class="methblk">
-    <div class="methhd"><span class="methname">${esc(b.label)}</span>
-      <span class="methrate">${b.rate}% per step</span>
-      <span class="methn">${b.rows.length} entr${b.rows.length===1?'y':'ies'}</span></div>
-    <div class="mons">${b.rows.map(r=>`<button class="mon" data-sp="${esc(r.s)}" style="${tint(r.s)}">
-      ${sprite(r.s,size||44)}<div class="who"><b>${esc(r.s)}</b>${badges(r.s)}</div>
-      <div class="lv">Lv ${r.min===r.max?r.min:r.min+'–'+r.max}</div>
-      <div class="bar"><i style="width:${Math.max(r.pct,2)}%"></i></div>
-      <div class="pc">${r.pct}%</div></button>`).join('')}</div></div>`;
-'''),
-(1332, 1340, r'''    <div class="sec">${methBlocks(m).map(b=>methSection(b)).join('')}</div>
-'''),
-(2084, 2084, r'''        <div class="src"><span class="tag comm">Community · version-matched</span>
