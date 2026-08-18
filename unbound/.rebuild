@@ -1,0 +1,6 @@
+Bump this file to ask Vercel for a fresh build when no source has changed.
+The build is deterministic -- every source is pinned by SHA and both the parts
+and the patched build_app.py are checksummed -- so a rebuild produces the same
+site unless one of those pins moved.
+
+2026-08-18T03:52Z  rebuild requested
