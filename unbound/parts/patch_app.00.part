@@ -17,7 +17,7 @@ there is only ever one hop from the parts to the app.
 import hashlib, os
 
 BASE = '1f36455fa8e4f3a847289e9cf537ea11ab7ef58134813bff0c6bc398fb4813bd'
-WANT = 'ae1d6c35b8596ab7845ad184211f2e96217bdd6560eb73a8ae8a4e6aca5dcdae'
+WANT = 'e31b6470b8a23dbb1f729dff7518cbd50e0771c2c330db0cd60e2ce11f729da7'
 path = os.path.join(os.environ.get('UBROOT', '.'), 'build_app.py')
 src = open(path, encoding='utf-8').read()
 got = hashlib.sha256(src.encode()).hexdigest()
@@ -26,113 +26,109 @@ assert got == BASE, 'build_app.py is not the baseline this was built from: ' + g
 # (first line, last line + 1, replacement) against the baseline's own line
 # numbering, applied back to front so earlier ranges stay valid.
 EDITS = [
-(109, 109, r'''/* grid items size to their content by default, so one wide table dragged the
-   whole page sideways on a phone -- the views must be allowed to be narrow */
-.wrap>div,.wrap>section{min-width:0}
-'''),
-(234, 247, r'''/* ---------- type chart ----------
-   Rotated text headers and three flat colours were unreadable. Every type now
-   wears its own colour on both axes, the cells carry a diverging scale, and
-   hovering or tapping any cell lights its whole row and column so you can
-   actually trace a matchup across eighteen columns. */
-.tcbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}
-.tcseg{display:flex;gap:3px;background:var(--s2);padding:4px;border-radius:12px;
-  border:1px solid var(--line);flex:none}
-.tcseg button{border:0;background:none;font:inherit;font-size:12px;font-weight:800;
-  padding:6px 13px;border-radius:9px;color:var(--ink2);cursor:pointer;transition:.13s}
-.tcseg button[aria-pressed=true]{background:var(--s1);color:var(--ink);box-shadow:0 2px 6px rgba(13,33,54,.13)}
-.tcread{flex:1;min-width:210px;font-size:13px;font-weight:700;color:var(--ink2);
-  padding:9px 13px;border-radius:12px;background:var(--s2);border:1px solid var(--line)}
-.tcread b{color:var(--ink)}
-.tcread .rx{font-weight:800}
-.tcpick{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px}
-.tcpick button{border:0;font:inherit;cursor:pointer;font-size:10px;font-weight:800;letter-spacing:.05em;
-  padding:7px 11px;border-radius:999px;color:#fff;opacity:.74;transition:.13s;text-transform:uppercase}
-.tcpick button:hover{opacity:1;transform:translateY(-1px)}
-.tcpick button.on{opacity:1;box-shadow:0 4px 12px -3px rgba(13,33,54,.55);transform:translateY(-1px)}
-.tcpick .tcclear{background:var(--s3);color:var(--ink2);opacity:1}
-.tcwrap{overflow-x:auto;max-width:100%;padding:2px 2px 8px;-webkit-overflow-scrolling:touch}
-.tcgrid{border-collapse:separate;border-spacing:3px}
-.tcgrid th{padding:0}
-.tcgrid th button{border:0;font:inherit;cursor:pointer;font-weight:800;color:#fff;
-  border-radius:8px;display:block;transition:.13s;box-shadow:inset 0 -2px 0 rgba(0,0,0,.17)}
-.tcgrid thead th button{width:30px;height:32px;font-size:9px;letter-spacing:.02em;padding:0}
-.tcgrid tbody th button{width:78px;height:30px;font-size:10px;text-align:left;padding:0 9px;
-  letter-spacing:.01em;white-space:nowrap;overflow:hidden}
-.tcgrid th button:hover{filter:brightness(1.14)}
-.tcgrid th.dim button{opacity:.34}
-.tcgrid th.axis button{outline:2px solid var(--ink);outline-offset:2px}
-.tcgrid .cnr{font-size:8.5px;font-weight:800;color:var(--ink3);text-align:right;padding-right:8px;
-  line-height:1.25;text-transform:uppercase;letter-spacing:.05em}
-.tcgrid td{width:30px;height:30px;text-align:center;border-radius:8px;font-weight:800;font-size:11.5px;
-  background:var(--s2);color:transparent;transition:opacity .12s}
-.tcgrid td.v20{background:linear-gradient(160deg,#3ad07a,#12a054);color:#fff;
-  box-shadow:inset 0 -2px 0 rgba(0,0,0,.18)}
-.tcgrid td.v5{background:linear-gradient(160deg,#ff9a70,#e04f37);color:#fff;
-  box-shadow:inset 0 -2px 0 rgba(0,0,0,.18)}
-.tcgrid td.v0{background:linear-gradient(160deg,#525e7d,#1e2536);color:#fff}
-.tcgrid td.v10{background:var(--s3)}
-.tcgrid td.dim{opacity:.22}
-.tcgrid.hov td{opacity:.18}
-.tcgrid.hov td.rc{opacity:1}
-.tcgrid.hov td.hit{outline:3px solid var(--ink);outline-offset:1px;position:relative;z-index:3}
-.tcgrid th.hov button{outline:2px solid var(--ink);outline-offset:2px}
-.tclegend{display:flex;gap:14px;flex-wrap:wrap;margin-top:14px;font-size:11.5px;font-weight:700;
-  color:var(--ink2);align-items:center}
-.tclegend i{display:inline-block;width:14px;height:14px;border-radius:5px;margin-right:6px;vertical-align:-2px}
-.tcsum{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px}
-.tcsum .tcs{border:1px solid var(--line);border-radius:16px;padding:14px;background:var(--s1)}
-.tcsum .tcs h5{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink3);
-  margin-bottom:10px;font-weight:800}
-.tcsum .tcs h5 em{font-style:normal;color:var(--ink)}
-.tchero{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:16px;margin-bottom:12px;
-  color:#fff;box-shadow:inset 0 -3px 0 rgba(0,0,0,.18)}
-.tchero .tcname{font-size:19px;font-weight:800;letter-spacing:-.01em}
-.tchero .tcmeta{font-size:12px;font-weight:700;opacity:.92}
-'''),
-(366, 369, r'''  .tcgrid td{width:24px;height:24px;font-size:10px;border-radius:6px}
-  .tcgrid thead th button{width:24px;height:26px;font-size:8px;border-radius:6px}
-  .tcgrid tbody th button{width:44px;height:24px;font-size:8.5px;padding:0 6px;border-radius:6px}
-  .tcgrid .cnr{font-size:7.5px;padding-right:5px}
-  .tcsum{grid-template-columns:1fr}
-  .tcread{font-size:12px}
-'''),
-(1112, 1112, r'''/* ---------------- type chart ----------------
-   Eighteen columns of rotated grey labels and three flat colours was unreadable:
-   you could not tell which row you were on halfway across, and nothing said what
-   a cell meant without squinting at a tooltip. Now every type wears its own
-   colour on both axes, cells carry a diverging scale with the multiplier written
-   in, hovering lights the whole row and column, and picking a type pulls out its
-   offence and defence in full. Phones get a card list instead of the grid. */
-const TABBR={Normal:'NRM',Fire:'FIR',Water:'WTR',Electric:'ELC',Grass:'GRS',Ice:'ICE',
-  Fighting:'FIG',Poison:'PSN',Ground:'GRD',Flying:'FLY',Psychic:'PSY',Bug:'BUG',Rock:'RCK',
-  Ghost:'GHO',Dragon:'DRG',Dark:'DRK',Steel:'STL',Fairy:'FAI'};
-let tcSel=null, tcView=(matchMedia('(max-width:640px)').matches?'list':'grid');
-function tcAbbr(t){return TABBR[t]||t.slice(0,3).toUpperCase()}
-function tcRaw(a,d){const v=(TCH.chart[a]||{})[d];return v===undefined?10:v}
-function tcGlyph(m){return m===20?'2':m===5?'½':m===0?'0':''}
-function tcWord(m){return m===20?'super effective':m===5?'not very effective':
-  m===0?'no effect at all':'normal damage'}
-function tcTimes(m){return m===20?'×2':m===5?'×½':m===0?'×0':'×1'}
-function tcStyle(t){const c=TC[t]||'#A8A77A';return `background:${c};color:${inkOn(c)}`}
-// How much of the game each type actually is -- a chart that tells you Fairy is
-// strong is less useful than one that also says how many Fairies you can catch.
-function tcCount(t){
-  let mons=0, wild=0;
-  for(const n in M){if(!types(n).includes(t)) continue; mons++; if(obtainable(n)) wild++}
-  const mv=MVL.filter(m=>m.t===t&&m.p>0).length;
-  return {mons,wild,mv};
-}
-function tcPanels(t){
-  const atk={}, def={};
-  for(const o of TCH.names){(atk[tmul(t,o)] ||= []).push(o); (def[tmul(o,t)] ||= []).push(o)}
-  const none='<div class="mut" style="font-size:12px">Nothing — neutral all round.</div>';
-  const a=[mulRow('×2','m2',atk[2]),mulRow('×½','mh',atk[0.5]),mulRow('×0','m0',atk[0])].join('');
-  const d=[mulRow('Weak ×2','m2',def[2]),mulRow('Resists ×½','mh',def[0.5]),
-           mulRow('Immune','m0',def[0])].join('');
-  return `<div class="tcsum">
-    <div class="tcs"><h5>Attacking with <em>${esc(t)}</em></h5><div class="mups">${a||none}</div></div>
-    <div class="tcs"><h5>Defending as <em>${esc(t)}</em></h5><div class="mups">${d||none}</div></div>
-  </div>`;
-}
-function tcHero(t){
+(78, 78, r'''# ---------------------------------------------------------------- the map
+# Unbound ships no layout data at all -- no map headers, no connections, no
+# coordinates -- so this is not generated, it is transcribed from the community
+# overview map of Borrius. Positions are that map's own 640x480 frame, which is
+# why the numbers are round-ish and hand-set. What IS generated is the join: the
+# prefixes below are matched against the encounter table's real area names at
+# build time, and anything that fails to match is printed rather than hidden.
+#
+# A place with no areas is not a bug -- plenty of towns simply have no wild
+# encounters in the community table, and the app says so on the card.
+PLACES = [
+ ('Frozen Heights',    270, 26, 80, 48, 'ice',     ['Frozen Heights']),
+ ('Route 1',           296, 76, 46, 16, 'route',   ['Route 1$']),
+ ('Icicle Cave',       300, 94, 58, 18, 'cave',    ['Icicle Cave']),
+ ('Route 3',           222, 96, 52, 18, 'route',   ['Route 3$']),
+ ('Flower Paradise',   216,116, 64, 20, 'flower',  ['Flower Paradise']),
+ ('Bellin Town',       284,114, 56, 18, 'town',    ['Bellin Town']),
+ ('Icy Hole',          288,134, 52, 18, 'cave',    ['Icy Hole']),
+ ('Blizzard City',       4,106, 70, 20, 'city',    ['Blizzard City']),
+ ('Frozen Forest',       4,128, 70, 22, 'forest',  ['Frozen Forest']),
+ ('Route 4',           146,116, 56, 18, 'route',   ['Route 4$']),
+ ('Cinder Volcano',    142,136, 66, 20, 'volcano', ['Cinder Volcano']),
+ ('Magnolia Town',     504, 98, 60, 26, 'town',    ['Magnolia Town']),
+ ('Magnolia Fields',   566, 96, 54, 18, 'grass',   ['Magnolia Fields']),
+ ('Redwood Village',   566,116, 72, 24, 'town',    ['Redwood Village']),
+ ('Route 8',             4,174, 60, 18, 'route',   ['Route 8$']),
+ ('Frost Mountain',      4,194, 60, 22, 'ice',     ['Frost Mountain']),
+ ('Route 5',            94,178, 62, 18, 'route',   ['Route 5$']),
+ ('Pokemon Daycare',    94,198, 62, 20, 'build',   []),
+ ('Route 6',           168,158, 52, 18, 'route',   ['Route 6$']),
+ ('Grim Woods',        160,178, 44, 20, 'forest',  ['Grim Woods']),
+ ('Dresco Town',       226,148, 56, 24, 'town',    ['Dresco Town']),
+ ('Route 2',           286,156, 46, 18, 'route',   ['Route 2$']),
+ ('Route 15',          336,162, 32, 18, 'route',   ['Route 15$']),
+ ('Vivill Town',       380,130, 48, 42, 'city',    ['Vivill Town', 'Vivill Warehouse']),
+ ('Vivill Woods',      372,176, 48, 26, 'forest',  ['Vivill Woods']),
+ ('Pokemon League',    432,150, 66, 30, 'league',  []),
+ ('Cootes Bog',        500,140, 58, 20, 'swamp',   ['Cootes Bog']),
+ ('Crystal Peak',      500,162, 58, 24, 'cave',    ['Crystal Peak']),
+ ('Redwood Forest',    566,144, 72, 24, 'forest',  ['Redwood Forest']),
+ ('Cube Corp',         578,172, 60, 22, 'build',   ['Cube Corp']),
+ ('Dehara City',       206,188, 74, 22, 'city',    ['Dehara City']),
+ ('Rift Cave',         214,214, 58, 22, 'rift',    ['Rift Cave']),
+ ('Great Desert',      288,206, 66, 20, 'desert',  ['Great Desert']),
+ ('Tomb of Borrius',   272,230, 82, 20, 'tomb',    ['Tomb Of Borrius']),
+ ('Gurun Town',        358,210, 46, 28, 'town',    ['Gurun Town']),
+ ('Route 18',          424,196, 60, 18, 'route',   ['Route 18']),
+ ('Victory Road',      424,216, 60, 20, 'cave',    ['Victory Road']),
+ ('Polder Town',       496,192, 52, 30, 'town',    ['Polder Town']),
+ ('Safari Zone',       552,196, 60, 24, 'grass',   []),
+ ('Route 13',          162,214, 50, 18, 'route',   ['Route 13']),
+ ('Crater Town',        94,226, 60, 24, 'town',    []),
+ ('Route 7',             4,244, 56, 18, 'route',   ['Route 7$']),
+ ('Rock Valley Cave',   62,250, 46, 34, 'cave',    ['Valley Cave']),
+ ('Ruins of Void',     112,258, 62, 28, 'ruin',    ['Ruins Of Void']),
+ ('Route 14',          150,292, 52, 18, 'route',   ['Route 14']),
+ ('Route 12',          212,292, 64, 18, 'route',   ['Route 12$']),
+ ('Route 17',          360,296, 54, 18, 'route',   ['Route 17$']),
+ ('Underwater Route 17', 356,314, 58, 18, 'water', ['Underwater Route 17']),
+ ('Seaport City',      420,284, 76, 22, 'city',    ['Seaport City']),
+ ('Battle Frontier',   420,306, 76, 22, 'league',  []),
+ ('Glimmer Isle',      536,298, 62, 30, 'island',  []),
+ ('Route 9',             4,308, 68, 18, 'route',   ['Route 9$']),
+ ('Underground Pass',    4,328, 68, 22, 'cave',    []),
+ ('Auburn Waterway',    88,338, 72, 30, 'water',   ['Auburn Waterway']),
+ ('Tarmigan Town',     190,334, 70, 20, 'town',    ['Tarmigan Town']),
+ ('Tarmigan Mansion',  190,356, 70, 20, 'build',   []),
+ ('Route 16',          326,334, 54, 18, 'route',   ['Route 16$']),
+ ('Route 10',          104,384, 58, 18, 'route',   ['Route 10$']),
+ ('Cave of Being',     104,404, 58, 20, 'cave',    []),
+ ('Tehl Town',          38,392, 58, 22, 'town',    ['Tehl Town']),
+ ('Fallshore City',    168,396, 56, 24, 'city',    ['Fallshore City']),
+ ('Route 11',          172,424, 56, 18, 'route',   ['Route 11$']),
+ ('Epidimy Town',      276,360, 76, 20, 'town',    ['Epidimy Town']),
+ ('Thundercap Mt.',    276,382, 76, 20, 'mount',   ['Thundercap Mt']),
+ ('Antisis City',      360,372, 62, 30, 'city',    ['Antisis City']),
+ ('Antisis Sewers',    360,404, 62, 30, 'cave',    ['Antisis Sewers']),
+ ('Fullmoon Island',   428,388, 64, 28, 'island',  []),
+ ('Newmoon Island',    500,388, 62, 28, 'island',  []),
+ ('Distortion World',  574,398, 64, 44, 'rift',    ['Distortion World']),
+]
+
+# The road network, as drawn on that same map. Only used to draw the connectors,
+# so a missing one costs a line on the picture and nothing else.
+EDGES = [
+ ('Frozen Heights','Route 1'), ('Route 1','Icicle Cave'), ('Route 1','Bellin Town'),
+ ('Bellin Town','Icy Hole'), ('Bellin Town','Route 3'), ('Route 3','Flower Paradise'),
+ ('Route 3','Dresco Town'), ('Bellin Town','Route 2'), ('Route 2','Route 15'),
+ ('Route 15','Vivill Town'), ('Dresco Town','Route 6'), ('Route 6','Grim Woods'),
+ ('Route 6','Route 4'), ('Route 4','Cinder Volcano'), ('Route 4','Route 5'),
+ ('Route 5','Route 8'), ('Route 8','Blizzard City'), ('Blizzard City','Frozen Forest'),
+ ('Route 8','Frost Mountain'), ('Dresco Town','Dehara City'), ('Dehara City','Rift Cave'),
+ ('Dehara City','Route 13'), ('Route 13','Crater Town'), ('Crater Town','Route 7'),
+ ('Crater Town','Rock Valley Cave'), ('Crater Town','Ruins of Void'),
+ ('Dehara City','Great Desert'), ('Great Desert','Tomb of Borrius'),
+ ('Great Desert','Gurun Town'), ('Gurun Town','Route 18'), ('Route 18','Victory Road'),
+ ('Victory Road','Pokemon League'), ('Vivill Town','Pokemon League'),
+ ('Vivill Town','Vivill Woods'), ('Gurun Town','Route 16'), ('Route 16','Route 17'),
+ ('Route 17','Seaport City'), ('Seaport City','Battle Frontier'),
+ ('Dehara City','Route 12'), ('Route 12','Route 14'), ('Route 14','Route 9'),
+ ('Route 9','Underground Pass'), ('Route 12','Tarmigan Town'),
+ ('Tarmigan Town','Tarmigan Mansion'), ('Route 14','Auburn Waterway'),
+ ('Tarmigan Town','Route 11'), ('Route 11','Fallshore City'), ('Fallshore City','Route 10'),
+ ('Route 10','Cave of Being'), ('Route 10','Tehl Town'), ('Tarmigan Town','Epidimy Town'),
+ ('Epidimy Town','Thundercap Mt.'), ('Route 16','Antisis City'),
+ ('Antisis City','Antisis Sewers'), ('Seaport City','Polder Town'),

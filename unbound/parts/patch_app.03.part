@@ -1,0 +1,160 @@
+  const svg=document.getElementById('mapsvg'), read=document.getElementById('mapread');
+  const hits=mapMatches(q);
+  if(q&&hits.size){
+    svg.classList.add('searching');
+    svg.querySelectorAll('[data-place]').forEach(g=>
+      g.classList.toggle('hit',hits.has(g.dataset.place)));
+    read.innerHTML=`<b>${hits.size}</b> place${hits.size===1?'':'s'} match “${esc(query.trim())}”.`;
+  }
+  const off=offMapMatches(q);
+  if(q&&!hits.size){
+    read.innerHTML=off.length
+      ? `Nothing on the map, but “${esc(query.trim())}” turns up in ${off.length} area${
+          off.length===1?'':'s'} that could not be placed: ${off.slice(0,3).map(n=>
+          `<button class="minipill" data-loc="${esc(n)}">${esc(n)}</button>`).join('')}${
+          off.length>3?` +${off.length-3} more below`:''}`
+      : `Nothing matches “${esc(query.trim())}”.`;
+  } else if(q&&off.length){
+    read.innerHTML+=` Also in ${off.length} unplaced area${off.length===1?'':'s'} below.`;
+  }
+  svg.querySelectorAll('[data-place]').forEach(g=>{
+    g.addEventListener('click',()=>selectPlace(g.dataset.place));
+    g.addEventListener('mouseenter',()=>{
+      const p=PLI[g.dataset.place];
+      read.innerHTML=p.ms.length
+        ? `<b>${esc(p.n)}</b> — ${p.ms.length} area${p.ms.length===1?'':'s'}, ${plRows(p)} entries.`
+        : `<b>${esc(p.n)}</b> — no wild encounters documented.`;
+    });
+  });
+  if(selPlace) markPlace(selPlace);
+  wire();
+}
+function markPlace(n){
+  document.querySelectorAll('#mapsvg [data-place]').forEach(g=>
+    g.classList.toggle('on',g.dataset.place===n));
+}
+function selectPlace(n){
+  selPlace=n; selLoc=null;
+  document.getElementById('locpanel').innerHTML=placePanel(n);
+  markPlace(n); wire();
+  document.getElementById('locpanel').scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+'''),
+(1112, 1112, r'''/* ---------------- type chart ----------------
+   Eighteen columns of rotated grey labels and three flat colours was unreadable:
+   you could not tell which row you were on halfway across, and nothing said what
+   a cell meant without squinting at a tooltip. Now every type wears its own
+   colour on both axes, cells carry a diverging scale with the multiplier written
+   in, hovering lights the whole row and column, and picking a type pulls out its
+   offence and defence in full. Phones get a card list instead of the grid. */
+const TABBR={Normal:'NRM',Fire:'FIR',Water:'WTR',Electric:'ELC',Grass:'GRS',Ice:'ICE',
+  Fighting:'FIG',Poison:'PSN',Ground:'GRD',Flying:'FLY',Psychic:'PSY',Bug:'BUG',Rock:'RCK',
+  Ghost:'GHO',Dragon:'DRG',Dark:'DRK',Steel:'STL',Fairy:'FAI'};
+let tcSel=null, tcView=(matchMedia('(max-width:640px)').matches?'list':'grid');
+function tcAbbr(t){return TABBR[t]||t.slice(0,3).toUpperCase()}
+function tcRaw(a,d){const v=(TCH.chart[a]||{})[d];return v===undefined?10:v}
+function tcGlyph(m){return m===20?'2':m===5?'½':m===0?'0':''}
+function tcWord(m){return m===20?'super effective':m===5?'not very effective':
+  m===0?'no effect at all':'normal damage'}
+function tcTimes(m){return m===20?'×2':m===5?'×½':m===0?'×0':'×1'}
+function tcStyle(t){const c=TC[t]||'#A8A77A';return `background:${c};color:${inkOn(c)}`}
+// How much of the game each type actually is -- a chart that tells you Fairy is
+// strong is less useful than one that also says how many Fairies you can catch.
+function tcCount(t){
+  let mons=0, wild=0;
+  for(const n in M){if(!types(n).includes(t)) continue; mons++; if(obtainable(n)) wild++}
+  const mv=MVL.filter(m=>m.t===t&&m.p>0).length;
+  return {mons,wild,mv};
+}
+function tcPanels(t){
+  const atk={}, def={};
+  for(const o of TCH.names){(atk[tmul(t,o)] ||= []).push(o); (def[tmul(o,t)] ||= []).push(o)}
+  const none='<div class="mut" style="font-size:12px">Nothing — neutral all round.</div>';
+  const a=[mulRow('×2','m2',atk[2]),mulRow('×½','mh',atk[0.5]),mulRow('×0','m0',atk[0])].join('');
+  const d=[mulRow('Weak ×2','m2',def[2]),mulRow('Resists ×½','mh',def[0.5]),
+           mulRow('Immune','m0',def[0])].join('');
+  return `<div class="tcsum">
+    <div class="tcs"><h5>Attacking with <em>${esc(t)}</em></h5><div class="mups">${a||none}</div></div>
+    <div class="tcs"><h5>Defending as <em>${esc(t)}</em></h5><div class="mups">${d||none}</div></div>
+  </div>`;
+}
+function tcHero(t){
+  const c=TC[t]||'#A8A77A', [r,g,b]=rgb(c), k=tcCount(t);
+  return `<div class="tchero" style="background:linear-gradient(120deg,rgb(${r},${g},${b}),
+    rgba(${r},${g},${b},.66));color:${inkOn(c)}">
+    <div><div class="tcname">${esc(t)}</div>
+    <div class="tcmeta">${k.mons} Pokémon · ${k.wild} of them catchable in the wild ·
+      ${k.mv} damaging moves</div></div></div>`;
+}
+function tcGrid(){
+  const T=TCH.names;
+  const hcls=t=>tcSel?(tcSel===t?' axis':' dim'):'';
+  const head=T.map(d=>`<th data-ty="${d}" class="${hcls(d).trim()}"><button data-tcty="${d}"
+    style="${tcStyle(d)}" title="${d}">${tcAbbr(d)}</button></th>`).join('');
+  const body=T.map(a=>`<tr><th data-ty="${a}" class="${hcls(a).trim()}"><button data-tcty="${a}"
+    style="${tcStyle(a)}">${esc(a)}</button></th>${T.map(d=>{
+      const m=tcRaw(a,d);
+      const on=!tcSel||tcSel===a||tcSel===d;
+      return `<td class="v${m}${on?(tcSel?' cross':''):' dim'}" data-a="${a}" data-d="${d}"
+        data-m="${m}">${tcGlyph(m)}</td>`}).join('')}</tr>`).join('');
+  return `<div class="tcwrap"><table class="tcgrid" id="tcgrid">
+    <thead><tr><th class="cnr">atk ↓<br>def →</th>${head}</tr></thead>
+    <tbody>${body}</tbody></table></div>`;
+}
+// Picking a type in list mode narrows to that one card rather than leaving you
+// to scroll eighteen of them looking for it.
+function tcList(){
+  const list=tcSel?[tcSel]:TCH.names;
+  return `<div class="mons" style="gap:14px">${list.map(t=>
+    `<div>${tcHero(t)}${tcPanels(t)}</div>`).join('')}</div>`;
+}
+function tcReadDefault(){
+  if(tcView!=='grid') return tcSel
+    ? `Showing <b>${esc(tcSel)}</b> on its own. Pick it again to see all eighteen.`
+    : 'Every type in full. Pick one above to see just that card.';
+  return tcSel
+    ? `Showing <b>${esc(tcSel)}</b> — its row is what it hits, its column is what hits it.`
+    : 'Hover or tap a square to read the matchup.';
+}
+function renderTypeChart(){
+  const box=document.getElementById('tcbox');
+  if(!box) return;
+  box.innerHTML=`<div class="ghd"><h2>Every type matchup</h2>
+      <p class="mut" style="margin-top:8px;font-size:14px;max-width:72ch">Unbound uses the Gen VI chart, not
+      Gen III's — Fairy exists, Steel no longer resists Ghost or Dark, and Dragon does nothing to Fairy.
+      Attacking type reads down the left, defending across the top. Tap any square to hold it, or pick a
+      type to pull out everything it does and everything done to it.</p></div>
+    <div class="gsec">
+      <div class="tcbar">
+        <div class="tcseg">
+          <button data-tcview="grid" aria-pressed="${tcView==='grid'}">Grid</button>
+          <button data-tcview="list" aria-pressed="${tcView==='list'}">By type</button>
+        </div>
+        <div class="tcread" id="tcread">${tcReadDefault()}</div>
+      </div>
+      <div class="tcpick">${TCH.names.map(t=>`<button data-tcty="${t}" style="${tcStyle(t)}"
+        class="${tcSel===t?'on':''}">${esc(t)}</button>`).join('')}${
+        tcSel?`<button class="tcclear" data-tcclear="1">Clear</button>`:''}</div>
+      ${tcSel&&tcView==='grid'?tcHero(tcSel)+tcPanels(tcSel):''}
+      ${tcView==='grid'?tcGrid():tcList()}
+      ${tcView==='grid'?`<div class="tclegend">
+        <span><i style="background:linear-gradient(160deg,#3ad07a,#12a054)"></i>×2 super effective</span>
+        <span><i style="background:linear-gradient(160deg,#ff9a70,#e04f37)"></i>×½ not very effective</span>
+        <span><i style="background:linear-gradient(160deg,#525e7d,#1e2536)"></i>×0 no effect</span>
+        <span><i style="background:var(--s3)"></i>×1 normal</span></div>`:''}
+    </div>`;
+  wireTypeChart();
+}
+function wireTypeChart(){
+  const box=document.getElementById('tcbox'), read=document.getElementById('tcread');
+  box.querySelectorAll('[data-tcty]').forEach(b=>b.onclick=()=>{
+    tcSel=tcSel===b.dataset.tcty?null:b.dataset.tcty; renderTypeChart();
+    if(tcView==='grid') box.scrollIntoView({behavior:'smooth',block:'start'})});
+  const clr=box.querySelector('[data-tcclear]');
+  if(clr) clr.onclick=()=>{tcSel=null;renderTypeChart()};
+  box.querySelectorAll('[data-tcview]').forEach(b=>b.onclick=()=>{
+    tcView=b.dataset.tcview; renderTypeChart()});
+  const g=document.getElementById('tcgrid');
+  if(!g) return;
+  let held=null;

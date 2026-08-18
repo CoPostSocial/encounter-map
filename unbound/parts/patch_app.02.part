@@ -1,29 +1,163 @@
-    parts.push(block(`What beats ${t}`,dTable));
+  if(note) note.style.display=locView==='map'?'none':'';
+  if(locView==='map'){
+    document.getElementById('loccount').textContent=`${D.places.length} places`;
+    drawMap(); return;
   }
-  parts.push(`<button class="btnlink" data-view="tips">Open the full type chart</button>`);
-  return {head:`${t} type`,
-    sure:`Matched the <b>${t}</b> type. Gen VI chart, straight from the game's own
-      <code>type_tables.h</code>.`,
-    body:parts.join('')};
+  drawLocList();
 }
+function drawLocList(){
 '''),
-(1332, 1332, r'''
-  // a bare type, but only when no actual Pokemon or place was named outright --
-  // "what ice pokemon live in frost mountain" is a question about the place
-  const ty=typeFrom(nq);
-  if(ty&&!spExact&&!locExact) return typeAnswer(ty,nq);
-'''),
-(1406, 1406, r'''  'what beats ice',
-'''),
-(1521, 1521, r'''  document.querySelectorAll('.askans [data-view]').forEach(b=>b.onclick=()=>setView(b.dataset.view));
-'''),
-]
-
-lines = src.splitlines(keepends=True)
-for a1, a2, text in reversed(EDITS):
-    lines[a1:a2] = [text]
-out = ''.join(lines)
-got = hashlib.sha256(out.encode()).hexdigest()
-assert got == WANT, 'patched build_app.py hashes wrong: ' + got
-open(path, 'w', encoding='utf-8').write(out)
-print('patch_app: build_app.py ->', len(out), 'bytes', got[:12])
+(880, 884, r''''''),
+(901, 901, r'''/* ---------------- the map ----------------
+   Unbound publishes no layout data, so none of this is generated: the regions
+   are transcribed from the community overview map of Borrius and carry that
+   map's own coordinates. What is generated is the join to real data -- each
+   region lists the encounter areas whose names matched it at build time, and
+   the areas that matched nothing are listed under the map rather than dropped.
+   A region with no areas is drawn dashed and says so when you open it. */
+const MAPC={
+  ice:['#dcefff','#a9cde8'], route:['#c2e6aa','#8ec473'], grass:['#bce898','#8ec168'],
+  forest:['#88c791','#4f9a63'], town:['#f5dcae','#d3ae72'], city:['#dccbf2','#a992d8'],
+  build:['#e2e7ef','#b2bccb'], cave:['#d0bfa9','#a08d76'], mount:['#cdcdd4','#9a9aa6'],
+  volcano:['#f5b49d','#d1735a'], desert:['#f6e4ab','#d8bd6d'], tomb:['#ddcb9d','#b39f67'],
+  swamp:['#aecaa4','#7ea171'], water:['#a9d8f5','#6fadd6'], island:['#a2ded0','#63b5a1'],
+  league:['#f6c8bb','#d68e7c'], rift:['#d4bcec','#a688cf'], ruin:['#c8c5da','#9995b6'],
+  flower:['#f9cfe0','#dc9cba']};
+const LEGEND=[['town','Towns & cities'],['route','Routes'],['forest','Woods'],['cave','Caves'],
+  ['water','Water'],['ice','Snow'],['desert','Desert'],['island','Islands']];
+const PL=D.places, PLI={};
+PL.forEach(p=>PLI[p.n]=p);
+const PLOF={};                       // area name -> the place that holds it
+PL.forEach(p=>p.ms.forEach(m=>PLOF[m]=p.n));
+function plRows(p){
+  let n=0;
+  for(const nm of p.ms){
+    const m=D.maps.find(x=>x.name===nm);
+    if(m) for(const k in m.methods) n+=m.methods[k].rows.length;
+  }
+  return n;
+}
+// The boxes are small and hand-sized, so the label is fitted to the box rather
+// than the box to the label: try one, two and three lines and keep whichever
+// arrangement lets the text be biggest. "Tomb of Borriu" clipped mid-word was
+// the alternative.
+function plFit(name,w,h){
+  const words=name.split(' ');
+  let best={size:0,lines:[name]};
+  for(let n=1;n<=Math.min(3,words.length);n++){
+    const lines=[], per=Math.ceil(words.length/n);
+    for(let i=0;i<words.length;i+=per) lines.push(words.slice(i,i+per).join(' '));
+    const longest=Math.max(...lines.map(l=>l.length));
+    const size=Math.min(7.6,(w-7)/(longest*0.615),(h-4)/(lines.length*1.16));
+    if(size>best.size) best={size,lines};
+  }
+  return best;
+}
+// The landmass is not drawn anywhere -- it is every region's own box, inflated
+// and blurred through a threshold filter so the overlapping blobs fuse into one
+// coastline. Two passes give shallow water around the shore. It costs nothing
+// to keep in sync: move a region and the coast moves with it.
+function landBlobs(pad,rx){
+  return PL.map(p=>`<rect x="${p.x-pad}" y="${p.y-pad}" width="${p.w+pad*2}"
+    height="${p.h+pad*2}" rx="${rx}"/>`).join('');
+}
+function mapSVG(){
+  const roads=D.edges.map(([a,b])=>{
+    const A=PLI[a],B=PLI[b]; if(!A||!B) return '';
+    const ax=A.x+A.w/2, ay=A.y+A.h/2, bx=B.x+B.w/2, by=B.y+B.h/2;
+    // orthogonal like the source map's roads, never a diagonal across the sea
+    return `<path class="road" d="M${ax} ${ay} L${bx} ${ay} L${bx} ${by}"/>`;
+  }).join('');
+  const regions=PL.map(p=>{
+    const [fill,stroke]=MAPC[p.k]||MAPC.route;
+    const n=plRows(p), f=plFit(p.n,p.w,p.h);
+    const y0=p.y+p.h/2-(f.lines.length-1)*f.size*0.58+f.size*0.36;
+    return `<g class="rg${p.ms.length?'':' empty'}" data-place="${esc(p.n)}">
+      <title>${esc(p.n)}${p.ms.length?` — ${p.ms.length} area${p.ms.length===1?'':'s'}, ${n} entries`
+        :' — no wild encounters documented'}</title>
+      <rect x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}" rx="5"
+        fill="${fill}" stroke="${stroke}"/>
+      ${f.lines.map((l,i)=>`<text x="${p.x+p.w/2}" y="${y0+i*f.size*1.16}" text-anchor="middle"
+        font-size="${f.size.toFixed(2)}">${esc(l)}</text>`).join('')}
+    </g>`;
+  }).join('');
+  return `<svg class="mapsvg" id="mapsvg" viewBox="0 0 640 480" role="img"
+    aria-label="Map of the Borrius region">
+    <defs><filter id="coast" x="-8%" y="-8%" width="116%" height="116%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="6" result="b"/>
+      <feColorMatrix in="b" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 20 -8"/>
+    </filter></defs>
+    <g filter="url(#coast)" fill="#bfe2f4">${landBlobs(22,20)}</g>
+    <g filter="url(#coast)" fill="#e9e3cb">${landBlobs(13,16)}</g>
+    ${roads}${regions}</svg>`;
+}
+function placePanel(name){
+  const p=PLI[name]; if(!p) return '';
+  const [fill,stroke]=MAPC[p.k]||MAPC.route;
+  const n=plRows(p);
+  const lv=p.ms.map(m=>MAPLV[m]).filter(Boolean);
+  const first=lv.length?Math.min(...lv):0;
+  return `<div class="card">
+    <div class="ghd"><div class="plhero">
+      <h2>${esc(p.n)}</h2>
+      <span class="pltag" style="background:${fill};border-color:${stroke}">${esc(p.k)}</span>
+      ${p.ms.length?`<span class="mut" style="font-size:12.5px">${p.ms.length} area${
+        p.ms.length===1?'':'s'} · ${n} encounter entries${first?` · from Lv ${first}, ${stageLabel(first)}`:''}</span>`:''}
+    </div></div>
+    ${p.ms.length?'':`<div class="note warn">No wild encounters are documented here. The area exists in the
+      game; the community encounter table this site is built from simply has no rows for it, so there is
+      nothing honest to show.</div>`}
+    ${p.ms.map(nm=>{
+      const m=D.maps.find(x=>x.name===nm); if(!m) return '';
+      return `<div class="sec"><div class="sechd"><h3>${esc(m.name)}</h3>
+        <span class="mut" style="font-size:11.5px">${Object.values(m.methods).map(b=>
+          `${b.label} ${b.rate}%`).join(' · ')}</span>
+        <button class="minipill" data-loc="${esc(m.name)}">open on its own</button></div>
+        ${Object.values(m.methods).map(b=>`<div class="mons" style="margin-bottom:8px">${
+          b.rows.map(r=>`<button class="mon" data-sp="${esc(r.s)}" style="${tint(r.s)}">
+            ${sprite(r.s,40)}<div class="who"><b>${esc(r.s)}</b><span class="mut"
+              style="font-size:11px">${esc(b.label)}</span></div>
+            <div class="lv">Lv ${r.min===r.max?r.min:r.min+'–'+r.max}</div>
+            <div class="bar"><i style="width:${Math.max(r.pct,2)}%"></i></div>
+            <div class="pc">${r.pct}%</div></button>`).join('')}</div>`).join('')}
+      </div>`}).join('')}
+  </div>`;
+}
+// Searching the map is the point of it: type a Pokemon and the places that
+// actually hold it light up while everything else falls back.
+function mapHas(nm,q){
+  const m=D.maps.find(x=>x.name===nm);
+  return !!m&&Object.values(m.methods).some(b=>b.rows.some(r=>r.s.toLowerCase().includes(q)));
+}
+function mapMatches(q){
+  const out=new Set();
+  if(!q) return out;
+  for(const p of PL){
+    if(p.n.toLowerCase().includes(q)){out.add(p.n);continue}
+    for(const nm of p.ms) if(mapHas(nm,q)){out.add(p.n);break}
+  }
+  return out;
+}
+// 34 areas never made it onto the map, 26 of them because the encounter table
+// never named them. A search that finds a Pokemon only in one of those should
+// say where it is, not shrug -- Larvitar lives in exactly such a place.
+function offMapMatches(q){
+  return q?D.offmap.filter(nm=>nm.toLowerCase().includes(q)||mapHas(nm,q)):[];
+}
+function drawMap(){
+  const q=query.trim().toLowerCase();
+  document.getElementById('loclist').innerHTML=`
+    <div class="mapbar">
+      <div class="mapread" id="mapread">Tap a place to see everything that lives there.${
+        matchMedia('(max-width:640px)').matches?' Drag the map sideways for the east coast.':''}</div>
+    </div>
+    <div class="mapwrap">${mapSVG()}</div>
+    <div class="maplegend">${LEGEND.map(([k,l])=>
+      `<span><i style="background:${MAPC[k][0]};border-color:${MAPC[k][1]}"></i>${l}</span>`).join('')}
+      <span><i style="background:#fff;border-style:dashed"></i>No encounters documented</span></div>
+    <div class="note">Transcribed from the community overview map of Borrius — Unbound publishes no layout
+      data, so the shapes are hand-placed and the roads are schematic. The encounter tables behind each
+      place are the real thing. ${D.offmap.length} area${D.offmap.length===1?'':'s'} could not be put on the
+      map${D.offmap.length?':':'.'}
+      <span class="offmap">${D.offmap.map(n=>
+        `<button class="minipill" data-loc="${esc(n)}">${esc(n)}</button>`).join('')}</span></div>`;

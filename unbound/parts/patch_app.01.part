@@ -1,166 +1,138 @@
-  const c=TC[t]||'#A8A77A', [r,g,b]=rgb(c), k=tcCount(t);
-  return `<div class="tchero" style="background:linear-gradient(120deg,rgb(${r},${g},${b}),
-    rgba(${r},${g},${b},.66));color:${inkOn(c)}">
-    <div><div class="tcname">${esc(t)}</div>
-    <div class="tcmeta">${k.mons} Pokémon · ${k.wild} of them catchable in the wild ·
-      ${k.mv} damaging moves</div></div></div>`;
-}
-function tcGrid(){
-  const T=TCH.names;
-  const hcls=t=>tcSel?(tcSel===t?' axis':' dim'):'';
-  const head=T.map(d=>`<th data-ty="${d}" class="${hcls(d).trim()}"><button data-tcty="${d}"
-    style="${tcStyle(d)}" title="${d}">${tcAbbr(d)}</button></th>`).join('');
-  const body=T.map(a=>`<tr><th data-ty="${a}" class="${hcls(a).trim()}"><button data-tcty="${a}"
-    style="${tcStyle(a)}">${esc(a)}</button></th>${T.map(d=>{
-      const m=tcRaw(a,d);
-      const on=!tcSel||tcSel===a||tcSel===d;
-      return `<td class="v${m}${on?(tcSel?' cross':''):' dim'}" data-a="${a}" data-d="${d}"
-        data-m="${m}">${tcGlyph(m)}</td>`}).join('')}</tr>`).join('');
-  return `<div class="tcwrap"><table class="tcgrid" id="tcgrid">
-    <thead><tr><th class="cnr">atk ↓<br>def →</th>${head}</tr></thead>
-    <tbody>${body}</tbody></table></div>`;
-}
-// Picking a type in list mode narrows to that one card rather than leaving you
-// to scroll eighteen of them looking for it.
-function tcList(){
-  const list=tcSel?[tcSel]:TCH.names;
-  return `<div class="mons" style="gap:14px">${list.map(t=>
-    `<div>${tcHero(t)}${tcPanels(t)}</div>`).join('')}</div>`;
-}
-function tcReadDefault(){
-  if(tcView!=='grid') return tcSel
-    ? `Showing <b>${esc(tcSel)}</b> on its own. Pick it again to see all eighteen.`
-    : 'Every type in full. Pick one above to see just that card.';
-  return tcSel
-    ? `Showing <b>${esc(tcSel)}</b> — its row is what it hits, its column is what hits it.`
-    : 'Hover or tap a square to read the matchup.';
-}
-function renderTypeChart(){
-  const box=document.getElementById('tcbox');
-  if(!box) return;
-  box.innerHTML=`<div class="ghd"><h2>Every type matchup</h2>
-      <p class="mut" style="margin-top:8px;font-size:14px;max-width:72ch">Unbound uses the Gen VI chart, not
-      Gen III's — Fairy exists, Steel no longer resists Ghost or Dark, and Dragon does nothing to Fairy.
-      Attacking type reads down the left, defending across the top. Tap any square to hold it, or pick a
-      type to pull out everything it does and everything done to it.</p></div>
-    <div class="gsec">
-      <div class="tcbar">
-        <div class="tcseg">
-          <button data-tcview="grid" aria-pressed="${tcView==='grid'}">Grid</button>
-          <button data-tcview="list" aria-pressed="${tcView==='list'}">By type</button>
-        </div>
-        <div class="tcread" id="tcread">${tcReadDefault()}</div>
-      </div>
-      <div class="tcpick">${TCH.names.map(t=>`<button data-tcty="${t}" style="${tcStyle(t)}"
-        class="${tcSel===t?'on':''}">${esc(t)}</button>`).join('')}${
-        tcSel?`<button class="tcclear" data-tcclear="1">Clear</button>`:''}</div>
-      ${tcSel&&tcView==='grid'?tcHero(tcSel)+tcPanels(tcSel):''}
-      ${tcView==='grid'?tcGrid():tcList()}
-      ${tcView==='grid'?`<div class="tclegend">
-        <span><i style="background:linear-gradient(160deg,#3ad07a,#12a054)"></i>×2 super effective</span>
-        <span><i style="background:linear-gradient(160deg,#ff9a70,#e04f37)"></i>×½ not very effective</span>
-        <span><i style="background:linear-gradient(160deg,#525e7d,#1e2536)"></i>×0 no effect</span>
-        <span><i style="background:var(--s3)"></i>×1 normal</span></div>`:''}
-    </div>`;
-  wireTypeChart();
-}
-function wireTypeChart(){
-  const box=document.getElementById('tcbox'), read=document.getElementById('tcread');
-  box.querySelectorAll('[data-tcty]').forEach(b=>b.onclick=()=>{
-    tcSel=tcSel===b.dataset.tcty?null:b.dataset.tcty; renderTypeChart();
-    if(tcView==='grid') box.scrollIntoView({behavior:'smooth',block:'start'})});
-  const clr=box.querySelector('[data-tcclear]');
-  if(clr) clr.onclick=()=>{tcSel=null;renderTypeChart()};
-  box.querySelectorAll('[data-tcview]').forEach(b=>b.onclick=()=>{
-    tcView=b.dataset.tcview; renderTypeChart()});
-  const g=document.getElementById('tcgrid');
-  if(!g) return;
-  let held=null;
-  // The row and the column both light up, so you can trace a matchup across
-  // eighteen columns without losing which row you started on; the square where
-  // they meet is the one being read out.
-  const paint=(a,d)=>{
-    g.querySelectorAll('.rc,.hit,.hov').forEach(x=>x.classList.remove('rc','hit','hov'));
-    g.classList.toggle('hov',!!a);
-    if(!a) return;
-    g.querySelectorAll(`td[data-a="${a}"],td[data-d="${d}"]`).forEach(x=>x.classList.add('rc'));
-    const cell=g.querySelector(`td[data-a="${a}"][data-d="${d}"]`);
-    if(cell) cell.classList.add('hit');
-    g.querySelectorAll(`th[data-ty="${a}"],th[data-ty="${d}"]`).forEach(x=>x.classList.add('hov'));
-  };
-  const say=(a,d,m)=>{read.innerHTML=`<b>${esc(a)}</b> → <b>${esc(d)}</b> is
-    <span class="rx" style="color:${m===20?'#0e8a48':m===5?'#c9412a':m===0?'#2c3550':'inherit'}">${
-    tcTimes(m)} ${tcWord(m)}</span>.`};
-  g.addEventListener('mouseover',e=>{
-    const td=e.target.closest('td[data-a]'); if(!td||held) return;
-    paint(td.dataset.a,td.dataset.d); say(td.dataset.a,td.dataset.d,+td.dataset.m)});
-  g.addEventListener('mouseleave',()=>{if(!held){paint(null);read.innerHTML=tcReadDefault()}});
-  g.addEventListener('click',e=>{
-    const td=e.target.closest('td[data-a]'); if(!td) return;
-    const key=td.dataset.a+'>'+td.dataset.d;
-    held=held===key?null:key;
-    paint(held?td.dataset.a:null,td.dataset.d);
-    if(held) say(td.dataset.a,td.dataset.d,+td.dataset.m)});
-}
+ ('Polder Town','Safari Zone'), ('Polder Town','Magnolia Town'),
+ ('Magnolia Town','Magnolia Fields'), ('Magnolia Town','Cootes Bog'),
+ ('Cootes Bog','Crystal Peak'), ('Crystal Peak','Cube Corp'),
+ ('Magnolia Fields','Redwood Village'), ('Redwood Village','Redwood Forest'),
+]
+
+_mapnames = [m['name'] for m in WORLD['maps']]
+_claimed, places = {}, []
+for _n, _x, _y, _w, _h, _k, _pre in PLACES:
+    _hit = []
+    for _nm in _mapnames:
+        for _p in _pre:
+            if (_nm == _p[:-1]) if _p.endswith('$') else _nm.startswith(_p):
+                _hit.append(_nm)
+                break
+    for _nm in _hit:
+        assert _nm not in _claimed, f'{_nm} claimed by both {_claimed[_nm]} and {_n}'
+        _claimed[_nm] = _n
+    places.append({'n': _n, 'x': _x, 'y': _y, 'w': _w, 'h': _h, 'k': _k, 'ms': _hit})
+_off = [n for n in _mapnames if n not in _claimed]
+print(f'map: {len(places)} places, {len(_claimed)} of {len(_mapnames)} areas placed, '
+      f'{len(_off)} off-map ({sum(1 for n in _off if n.startswith("Unnamed"))} of those unnamed)')
+
+payload['places'] = places
+payload['edges'] = EDGES
+payload['offmap'] = _off
 
 '''),
-(1117, 1131, r'''    <div class="card" id="tcbox"></div>
+(109, 109, r'''/* grid items size to their content by default, so one wide table dragged the
+   whole page sideways on a phone -- the views must be allowed to be narrow */
+.wrap>div,.wrap>section{min-width:0}
 '''),
-(1157, 1157, r'''  renderTypeChart();
+(234, 247, r'''/* ---------- type chart ----------
+   Rotated text headers and three flat colours were unreadable. Every type now
+   wears its own colour on both axes, the cells carry a diverging scale, and
+   hovering or tapping any cell lights its whole row and column so you can
+   actually trace a matchup across eighteen columns. */
+.tcbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.tcseg{display:flex;gap:3px;background:var(--s2);padding:4px;border-radius:12px;
+  border:1px solid var(--line);flex:none}
+.tcseg button{border:0;background:none;font:inherit;font-size:12px;font-weight:800;
+  padding:6px 13px;border-radius:9px;color:var(--ink2);cursor:pointer;transition:.13s}
+.tcseg button[aria-pressed=true]{background:var(--s1);color:var(--ink);box-shadow:0 2px 6px rgba(13,33,54,.13)}
+.tcread{flex:1;min-width:210px;font-size:13px;font-weight:700;color:var(--ink2);
+  padding:9px 13px;border-radius:12px;background:var(--s2);border:1px solid var(--line)}
+.tcread b{color:var(--ink)}
+.tcread .rx{font-weight:800}
+.tcpick{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px}
+.tcpick button{border:0;font:inherit;cursor:pointer;font-size:10px;font-weight:800;letter-spacing:.05em;
+  padding:7px 11px;border-radius:999px;color:#fff;opacity:.74;transition:.13s;text-transform:uppercase}
+.tcpick button:hover{opacity:1;transform:translateY(-1px)}
+.tcpick button.on{opacity:1;box-shadow:0 4px 12px -3px rgba(13,33,54,.55);transform:translateY(-1px)}
+.tcpick .tcclear{background:var(--s3);color:var(--ink2);opacity:1}
+.tcwrap{overflow-x:auto;max-width:100%;padding:2px 2px 8px;-webkit-overflow-scrolling:touch}
+.tcgrid{border-collapse:separate;border-spacing:3px}
+.tcgrid th{padding:0}
+.tcgrid th button{border:0;font:inherit;cursor:pointer;font-weight:800;color:#fff;
+  border-radius:8px;display:block;transition:.13s;box-shadow:inset 0 -2px 0 rgba(0,0,0,.17)}
+.tcgrid thead th button{width:30px;height:32px;font-size:9px;letter-spacing:.02em;padding:0}
+.tcgrid tbody th button{width:78px;height:30px;font-size:10px;text-align:left;padding:0 9px;
+  letter-spacing:.01em;white-space:nowrap;overflow:hidden}
+.tcgrid th button:hover{filter:brightness(1.14)}
+.tcgrid th.dim button{opacity:.34}
+.tcgrid th.axis button{outline:2px solid var(--ink);outline-offset:2px}
+.tcgrid .cnr{font-size:8.5px;font-weight:800;color:var(--ink3);text-align:right;padding-right:8px;
+  line-height:1.25;text-transform:uppercase;letter-spacing:.05em}
+.tcgrid td{width:30px;height:30px;text-align:center;border-radius:8px;font-weight:800;font-size:11.5px;
+  background:var(--s2);color:transparent;transition:opacity .12s}
+.tcgrid td.v20{background:linear-gradient(160deg,#3ad07a,#12a054);color:#fff;
+  box-shadow:inset 0 -2px 0 rgba(0,0,0,.18)}
+.tcgrid td.v5{background:linear-gradient(160deg,#ff9a70,#e04f37);color:#fff;
+  box-shadow:inset 0 -2px 0 rgba(0,0,0,.18)}
+.tcgrid td.v0{background:linear-gradient(160deg,#525e7d,#1e2536);color:#fff}
+.tcgrid td.v10{background:var(--s3)}
+.tcgrid td.dim{opacity:.22}
+.tcgrid.hov td{opacity:.18}
+.tcgrid.hov td.rc{opacity:1}
+.tcgrid.hov td.hit{outline:3px solid var(--ink);outline-offset:1px;position:relative;z-index:3}
+.tcgrid th.hov button{outline:2px solid var(--ink);outline-offset:2px}
+.tclegend{display:flex;gap:14px;flex-wrap:wrap;margin-top:14px;font-size:11.5px;font-weight:700;
+  color:var(--ink2);align-items:center}
+.tclegend i{display:inline-block;width:14px;height:14px;border-radius:5px;margin-right:6px;vertical-align:-2px}
+.tcsum{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px}
+.tcsum .tcs{border:1px solid var(--line);border-radius:16px;padding:14px;background:var(--s1)}
+.tcsum .tcs h5{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink3);
+  margin-bottom:10px;font-weight:800}
+.tcsum .tcs h5 em{font-style:normal;color:var(--ink)}
+.tchero{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:16px;margin-bottom:12px;
+  color:#fff;box-shadow:inset 0 -3px 0 rgba(0,0,0,.18)}
+.tchero .tcname{font-size:19px;font-weight:800;letter-spacing:-.01em}
+.tchero .tcmeta{font-size:12px;font-weight:700;opacity:.92}
+/* ---------- the map ----------
+   Regions are drawn in the source map's own 640x480 frame, so the shapes stay
+   where they were transcribed from no matter how wide the screen is. */
+.mapbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:0 18px 10px}
+.mapwrap{overflow-x:auto;padding:0 18px 6px;-webkit-overflow-scrolling:touch}
+.mapsvg{width:100%;height:auto;display:block;border-radius:16px;border:1px solid var(--line);
+  min-width:600px;background:linear-gradient(160deg,#a8d3ee,#7fb9de)}
+.mapsvg .rg{cursor:pointer}
+.mapsvg .rg rect{stroke-width:1.4;transition:opacity .12s}
+.mapsvg .rg:hover rect{stroke:#0d2136;stroke-width:2.6}
+.mapsvg .rg.on rect{stroke:var(--acc);stroke-width:3}
+.mapsvg .rg.empty rect{opacity:.5;stroke-dasharray:3 3}
+.mapsvg .rg.hit rect{stroke:#0b7f43;stroke-width:3}
+.mapsvg.searching .rg:not(.hit){opacity:.32}
+.mapsvg text{pointer-events:none;font-family:inherit;font-weight:800;fill:#0f2438}
+.mapsvg .road{stroke:#9a8f78;stroke-width:3;fill:none;stroke-linecap:round;stroke-linejoin:round;opacity:.6}
+.mapread{flex:1;min-width:200px;font-size:12.5px;font-weight:700;color:var(--ink2);
+  padding:8px 12px;border-radius:11px;background:var(--s2);border:1px solid var(--line)}
+.mapread b{color:var(--ink)}
+.maplegend{display:flex;gap:10px;flex-wrap:wrap;padding:6px 18px 14px;font-size:11px;
+  font-weight:700;color:var(--ink2)}
+.maplegend span{display:inline-flex;align-items:center;gap:5px}
+.maplegend i{width:12px;height:12px;border-radius:4px;display:inline-block;border:1px solid rgba(0,0,0,.18)}
+.plhero{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.plhero .pltag{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;
+  padding:4px 10px;border-radius:999px;border:1px solid rgba(0,0,0,.14)}
+.offmap{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
 '''),
-(1265, 1265, r'''/* A bare type is a fair question -- "what beats ice" is not about a route or a
-   species, it is about the chart. Direction matters and the phrasing carries it:
-   "what beats X" makes X the defender, "what does X beat" makes X the attacker. */
-function typeFrom(q){
-  // longest first so Fighting is not shadowed by a shorter name inside it
-  for(const t of [...TCH.names].sort((a,b)=>b.length-a.length))
-    if(new RegExp('\\b'+t.toLowerCase()+'(\\s+type)?\\b').test(q)) return t;
-  return null;
-}
-function typeDir(q,t){
-  const tl=t.toLowerCase();
-  if(new RegExp('what (does|do|can) (the )?'+tl).test(q)) return 'atk';
-  if(new RegExp(tl+'\\s+(type\\s+)?(is\\s+)?(good|strong|super effective|effective)\\s+against').test(q)) return 'atk';
-  if(new RegExp(tl+'\\s+(type\\s+)?(beats|hits|counters)').test(q)) return 'atk';
-  if(/\bresists?\b/.test(q)) return 'atk';
-  return 'def';
-}
-// Wild-obtainable Pokemon of a given type, hardest hitters first -- so the
-// answer is "use one of these", not just "bring a Fighting move".
-function monsOfType(t,limit){
-  const out=[];
-  for(const n in M){
-    const m=M[n];
-    if(m.hp===undefined||!obtainable(n)||!types(n).includes(t)) continue;
-    out.push({n,off:Math.max(statPct(RANK.atk,m.atk||0),statPct(RANK.spa,m.spa||0))});
-  }
-  out.sort((a,b)=>b.off-a.off||a.n.localeCompare(b.n));
-  return out.slice(0,limit||4);
-}
-function typeAnswer(t,q){
-  const dir=typeDir(q,t);
-  const hitBy={}, hits={};
-  for(const o of TCH.names){
-    const m=tmul(o,t); (hitBy[m] ||= []).push(o);          // o attacking t
-    const n=tmul(t,o); (hits[n] ||= []).push(o);           // t attacking o
-  }
-  const supers=hitBy[2]||[];
-  const best=supers.flatMap(x=>monsOfType(x,2).map(m=>({...m,t:x})))
-    .sort((a,b)=>b.off-a.off).slice(0,6);
-  const block=(title,rows)=>`<h4>${title}</h4><div class="mups">${rows.join('')}</div>`;
-  const dTable=[
-    mulRow('×2','m2',hitBy[2]), mulRow('×½','mh',hitBy[0.5]), mulRow('No effect','m0',hitBy[0])
-  ];
-  const aTable=[
-    mulRow('×2','m2',hits[2]), mulRow('×½','mh',hits[0.5]), mulRow('No effect','m0',hits[0])
-  ];
-  const parts=[];
-  if(dir==='def'){
-    parts.push(block(`What beats ${t}`,dTable));
-    if(best.length) parts.push(`<h4>Wild-obtainable Pokémon that carry those types</h4>
-      <div class="cnts">${best.map(c=>`<button class="cnt" data-sp="${esc(c.n)}" style="${tint(c.n)}">
-        ${sprite(c.n,44)}<span class="cmain"><b>${esc(c.n)}</b><span class="ctags">${tyPill(c.t)}
-        <span class="cx">offence beats ${c.off}%</span></span></span></button>`).join('')}</div>`);
-    parts.push(block(`What ${t} itself hits`,aTable));
-  } else {
-    parts.push(block(`What ${t} hits — and what shrugs it off`,aTable));
+(366, 369, r'''  .tcgrid td{width:24px;height:24px;font-size:10px;border-radius:6px}
+  .tcgrid thead th button{width:24px;height:26px;font-size:8px;border-radius:6px}
+  .tcgrid tbody th button{width:44px;height:24px;font-size:8.5px;padding:0 6px;border-radius:6px}
+  .tcgrid .cnr{font-size:7.5px;padding-right:5px}
+  .tcsum{grid-template-columns:1fr}
+  .tcread{font-size:12px}
+'''),
+(417, 418, r'''let selSpecies=null, selLoc=null, selPlace=null, locView='map';
+'''),
+(872, 872, r'''  const bar=document.getElementById('locsort');
+  bar.innerHTML='<div class="tcseg" style="margin-right:6px">'
+    +[['map','Map'],['list','List']].map(([k,l])=>
+      `<button data-lview="${k}" aria-pressed="${locView===k}">${l}</button>`).join('')+'</div>'
+    +(locView==='list'?'<span class="lbl">Sort</span>'+[['story','Story order'],['name','A–Z']].map(
+      ([k,l])=>`<button data-lsort="${k}" aria-pressed="${locSort===k}">${l}</button>`).join(''):'');
+  bar.querySelectorAll('[data-lview]').forEach(b=>b.onclick=()=>{
+    locView=b.dataset.lview; drawLocs()});
+  bar.querySelectorAll('[data-lsort]').forEach(b=>b.onclick=()=>{locSort=b.dataset.lsort;drawLocs()});
+  const note=document.getElementById('locnote');

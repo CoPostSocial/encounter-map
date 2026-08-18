@@ -1,0 +1,135 @@
+  // The row and the column both light up, so you can trace a matchup across
+  // eighteen columns without losing which row you started on; the square where
+  // they meet is the one being read out.
+  const paint=(a,d)=>{
+    g.querySelectorAll('.rc,.hit,.hov').forEach(x=>x.classList.remove('rc','hit','hov'));
+    g.classList.toggle('hov',!!a);
+    if(!a) return;
+    g.querySelectorAll(`td[data-a="${a}"],td[data-d="${d}"]`).forEach(x=>x.classList.add('rc'));
+    const cell=g.querySelector(`td[data-a="${a}"][data-d="${d}"]`);
+    if(cell) cell.classList.add('hit');
+    g.querySelectorAll(`th[data-ty="${a}"],th[data-ty="${d}"]`).forEach(x=>x.classList.add('hov'));
+  };
+  const say=(a,d,m)=>{read.innerHTML=`<b>${esc(a)}</b> → <b>${esc(d)}</b> is
+    <span class="rx" style="color:${m===20?'#0e8a48':m===5?'#c9412a':m===0?'#2c3550':'inherit'}">${
+    tcTimes(m)} ${tcWord(m)}</span>.`};
+  g.addEventListener('mouseover',e=>{
+    const td=e.target.closest('td[data-a]'); if(!td||held) return;
+    paint(td.dataset.a,td.dataset.d); say(td.dataset.a,td.dataset.d,+td.dataset.m)});
+  g.addEventListener('mouseleave',()=>{if(!held){paint(null);read.innerHTML=tcReadDefault()}});
+  g.addEventListener('click',e=>{
+    const td=e.target.closest('td[data-a]'); if(!td) return;
+    const key=td.dataset.a+'>'+td.dataset.d;
+    held=held===key?null:key;
+    paint(held?td.dataset.a:null,td.dataset.d);
+    if(held) say(td.dataset.a,td.dataset.d,+td.dataset.m)});
+}
+
+'''),
+(1117, 1131, r'''    <div class="card" id="tcbox"></div>
+'''),
+(1157, 1157, r'''  renderTypeChart();
+'''),
+(1265, 1265, r'''/* A bare type is a fair question -- "what beats ice" is not about a route or a
+   species, it is about the chart. Direction matters and the phrasing carries it:
+   "what beats X" makes X the defender, "what does X beat" makes X the attacker. */
+function typeFrom(q){
+  // longest first so Fighting is not shadowed by a shorter name inside it
+  for(const t of [...TCH.names].sort((a,b)=>b.length-a.length))
+    if(new RegExp('\\b'+t.toLowerCase()+'(\\s+type)?\\b').test(q)) return t;
+  return null;
+}
+function typeDir(q,t){
+  const tl=t.toLowerCase();
+  if(new RegExp('what (does|do|can) (the )?'+tl).test(q)) return 'atk';
+  if(new RegExp(tl+'\\s+(type\\s+)?(is\\s+)?(good|strong|super effective|effective)\\s+against').test(q)) return 'atk';
+  if(new RegExp(tl+'\\s+(type\\s+)?(beats|hits|counters)').test(q)) return 'atk';
+  if(/\bresists?\b/.test(q)) return 'atk';
+  return 'def';
+}
+// Wild-obtainable Pokemon of a given type, hardest hitters first -- so the
+// answer is "use one of these", not just "bring a Fighting move".
+function monsOfType(t,limit){
+  const out=[];
+  for(const n in M){
+    const m=M[n];
+    if(m.hp===undefined||!obtainable(n)||!types(n).includes(t)) continue;
+    out.push({n,off:Math.max(statPct(RANK.atk,m.atk||0),statPct(RANK.spa,m.spa||0))});
+  }
+  out.sort((a,b)=>b.off-a.off||a.n.localeCompare(b.n));
+  return out.slice(0,limit||4);
+}
+function typeAnswer(t,q){
+  const dir=typeDir(q,t);
+  const hitBy={}, hits={};
+  for(const o of TCH.names){
+    const m=tmul(o,t); (hitBy[m] ||= []).push(o);          // o attacking t
+    const n=tmul(t,o); (hits[n] ||= []).push(o);           // t attacking o
+  }
+  const supers=hitBy[2]||[];
+  const best=supers.flatMap(x=>monsOfType(x,2).map(m=>({...m,t:x})))
+    .sort((a,b)=>b.off-a.off).slice(0,6);
+  const block=(title,rows)=>`<h4>${title}</h4><div class="mups">${rows.join('')}</div>`;
+  const dTable=[
+    mulRow('×2','m2',hitBy[2]), mulRow('×½','mh',hitBy[0.5]), mulRow('No effect','m0',hitBy[0])
+  ];
+  const aTable=[
+    mulRow('×2','m2',hits[2]), mulRow('×½','mh',hits[0.5]), mulRow('No effect','m0',hits[0])
+  ];
+  const parts=[];
+  if(dir==='def'){
+    parts.push(block(`What beats ${t}`,dTable));
+    if(best.length) parts.push(`<h4>Wild-obtainable Pokémon that carry those types</h4>
+      <div class="cnts">${best.map(c=>`<button class="cnt" data-sp="${esc(c.n)}" style="${tint(c.n)}">
+        ${sprite(c.n,44)}<span class="cmain"><b>${esc(c.n)}</b><span class="ctags">${tyPill(c.t)}
+        <span class="cx">offence beats ${c.off}%</span></span></span></button>`).join('')}</div>`);
+    parts.push(block(`What ${t} itself hits`,aTable));
+  } else {
+    parts.push(block(`What ${t} hits — and what shrugs it off`,aTable));
+    parts.push(block(`What beats ${t}`,dTable));
+  }
+  parts.push(`<button class="btnlink" data-view="tips">Open the full type chart</button>`);
+  return {head:`${t} type`,
+    sure:`Matched the <b>${t}</b> type. Gen VI chart, straight from the game's own
+      <code>type_tables.h</code>.`,
+    body:parts.join('')};
+}
+'''),
+(1332, 1332, r'''
+  // a bare type, but only when no actual Pokemon or place was named outright --
+  // "what ice pokemon live in frost mountain" is a question about the place
+  const ty=typeFrom(nq);
+  if(ty&&!spExact&&!locExact) return typeAnswer(ty,nq);
+'''),
+(1406, 1406, r'''  'what beats ice',
+'''),
+(1461, 1461, r'''        <div class="src"><span class="tag comm">Community · hand-transcribed</span>
+          <h4>The map</h4>
+          <p>Unbound publishes no layout data at all — no map headers, no coordinates, no connections — so
+          the map here is not generated. Its ${D.places.length} regions and their positions are transcribed
+          by hand from the community overview map of Borrius, and the roads between them are schematic. What
+          is generated is the join: each region's areas are matched to the encounter table by name at build
+          time, which places ${Object.values(PLOF).length} of ${D.maps.length} areas. The
+          ${D.offmap.length} that match nothing are listed under the map rather than quietly dropped.</p></div>
+'''),
+(1477, 1478, r'''  if(v!=='locs'){selLoc=null; selPlace=null}
+'''),
+(1506, 1507, r'''  selLoc=n; selPlace=null; setView('locs');
+  if(locView==='map'&&PLOF[n]) markPlace(PLOF[n]);
+'''),
+(1521, 1521, r'''  document.querySelectorAll('.askans [data-view]').forEach(b=>b.onclick=()=>setView(b.dataset.view));
+'''),
+(1622, 1624, r'''      <div class="note" id="locnote">Unbound publishes no map data — no layouts, coordinates or
+        connections. The <b>Map</b> tab is transcribed from the community overview map of Borrius; this list
+        is the raw thing, all {len(WORLD['maps'])} encounter areas. Tap one for its full table.</div>
+'''),
+]
+
+lines = src.splitlines(keepends=True)
+for a1, a2, text in reversed(EDITS):
+    lines[a1:a2] = [text]
+out = ''.join(lines)
+got = hashlib.sha256(out.encode()).hexdigest()
+assert got == WANT, 'patched build_app.py hashes wrong: ' + got
+open(path, 'w', encoding='utf-8').write(out)
+print('patch_app: build_app.py ->', len(out), 'bytes', got[:12])
