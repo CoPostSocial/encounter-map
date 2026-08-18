@@ -1,0 +1,29 @@
+    parts.push(block(`What beats ${t}`,dTable));
+  }
+  parts.push(`<button class="btnlink" data-view="tips">Open the full type chart</button>`);
+  return {head:`${t} type`,
+    sure:`Matched the <b>${t}</b> type. Gen VI chart, straight from the game's own
+      <code>type_tables.h</code>.`,
+    body:parts.join('')};
+}
+'''),
+(1332, 1332, r'''
+  // a bare type, but only when no actual Pokemon or place was named outright --
+  // "what ice pokemon live in frost mountain" is a question about the place
+  const ty=typeFrom(nq);
+  if(ty&&!spExact&&!locExact) return typeAnswer(ty,nq);
+'''),
+(1406, 1406, r'''  'what beats ice',
+'''),
+(1521, 1521, r'''  document.querySelectorAll('.askans [data-view]').forEach(b=>b.onclick=()=>setView(b.dataset.view));
+'''),
+]
+
+lines = src.splitlines(keepends=True)
+for a1, a2, text in reversed(EDITS):
+    lines[a1:a2] = [text]
+out = ''.join(lines)
+got = hashlib.sha256(out.encode()).hexdigest()
+assert got == WANT, 'patched build_app.py hashes wrong: ' + got
+open(path, 'w', encoding='utf-8').write(out)
+print('patch_app: build_app.py ->', len(out), 'bytes', got[:12])
