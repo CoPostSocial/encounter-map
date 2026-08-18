@@ -52,7 +52,7 @@ check_script build_battle  35cf42c0bb78177f36f3768653cbb098e4f7ad965a4cf78564860
 check_script build_world   79b1e4d206879868d32fa5d1b874bab359ffd9923b88dd2890c4f182b27e273a
 check_script build_sprites bab889315631643edcc6ed89e5b6e182ad5795917c764a5385b6f9813bc3b5de
 check_script build_app     1f36455fa8e4f3a847289e9cf537ea11ab7ef58134813bff0c6bc398fb4813bd
-check_script patch_app     c09d21ba7e86c38316dc07ca4877301979728b7b35fad648481af5847eb49916
+check_script patch_app     d0d5cb1cf0e5252a19774dbf9bd9ed486144af216fb9fb746b140c6b266285d3
 
 # The app changes far more often than the 100 KB of parts it ships as, and
 # re-splitting the whole file for every tweak is the exact operation that
