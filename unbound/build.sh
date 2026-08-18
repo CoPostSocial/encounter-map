@@ -49,16 +49,18 @@ check_script() { # name expected-sha256
 }
 check_script build_species 6b218da8741219c2ebf0b71148caa2852dcbb88eae9493a0797da1ecf5f53e90
 check_script build_battle  35cf42c0bb78177f36f3768653cbb098e4f7ad965a4cf785648609f1ac4e85e7
-check_script build_world   79b1e4d206879868d32fa5d1b874bab359ffd9923b88dd2890c4f182b27e273a
+check_script build_world   eb8b40f4a119d405297ee811c3aa5d3ebddf0fcd3cb252421c502640de868cf8
 check_script build_sprites bab889315631643edcc6ed89e5b6e182ad5795917c764a5385b6f9813bc3b5de
 check_script build_app     1f36455fa8e4f3a847289e9cf537ea11ab7ef58134813bff0c6bc398fb4813bd
 check_script patch_app     d0d5cb1cf0e5252a19774dbf9bd9ed486144af216fb9fb746b140c6b266285d3
+check_script patch2_app    4aec5964d7e0fcd24d3eb44647216283909f1b70cbba828aa5a28320a54ece55
 
 # The app changes far more often than the 100 KB of parts it ships as, and
 # re-splitting the whole file for every tweak is the exact operation that
-# truncated a push once. So the parts stay at the baseline above and patch_app
-# carries the difference, checking the sha256 at both ends.
-python3 "$UBROOT/patch_app.py" | tee -a "$ROOT/.log"
+# truncated a push once. So the parts stay at the baseline above and the patches
+# carry the difference, each checking the sha256 at both ends.
+python3 "$UBROOT/patch_app.py"  | tee -a "$ROOT/.log"
+python3 "$UBROOT/patch2_app.py" | tee -a "$ROOT/.log"
 
 # ---- pinned sources --------------------------------------------------------
 # The author's species tables. Cloned rather than fetched file by file because
@@ -88,10 +90,16 @@ curl -fsSL "https://raw.githubusercontent.com/ydarissep/Unbound-Pokedex/$YDEX_SH
   -o "$SRC/ydex/src/locations/encounters.json"
 curl -fsSL "https://raw.githubusercontent.com/jimineybillybob1/pokemon-unbound-field-guide/$FG_SHA/data/battle-data.json" \
   -o "$SRC/fg/data/battle-data.json"
+# Gifts, statics, trades, raid dens with star tiers, Game Corner prizes -- the
+# only version-matched answer to "how do I get this thing" for the half of the
+# roster that stands in no grass.
+curl -fsSL "https://raw.githubusercontent.com/jimineybillybob1/pokemon-unbound-field-guide/$FG_SHA/data/acquisition-data.json" \
+  -o "$SRC/fg/data/acquisition-data.json"
 curl -fsSL "https://raw.githubusercontent.com/jimineybillybob1/pokemon-unbound-guide/$UG_SHA/data/unbound-data.json" \
   -o "$SRC/ug/data/unbound-data.json"
 say "ydex  $YDEX_SHA encounters=$(wc -c < "$SRC/ydex/src/locations/encounters.json") bytes"
-say "fg    $FG_SHA battles=$(wc -c < "$SRC/fg/data/battle-data.json") bytes"
+say "fg    $FG_SHA battles=$(wc -c < "$SRC/fg/data/battle-data.json") bytes \
+acquisition=$(wc -c < "$SRC/fg/data/acquisition-data.json") bytes"
 
 # ---- run the pipeline ------------------------------------------------------
 cd "$UBROOT"
