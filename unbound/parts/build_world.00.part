@@ -188,19 +188,17 @@ def build_specials():
         return {}
     d = json.load(open(p))
     out = {}
-    for key in ('giftStatic', 'legendary', 'trades', 'swarms', 'gameCorner'):
+    # giftStatic is deliberately not taken from here: upstream has the columns
+    # crossed, so every row's "pokemon" field actually holds a location and no
+    # row names a species at all. The acquisition table below carries the same
+    # gifts and statics with the columns intact.
+    for key in ('legendary', 'trades', 'swarms', 'gameCorner'):
         v = d.get(key)
         if v:
             out[key] = v
     return out
 
 
-# ---------------------------------------------------------------- trainers
-BOSSY = ('Gym Leader', 'Rival', 'Pokémon League', 'Other Boss', 'Team Shadow',
-         'Team Light of Ruin', 'Mega Trainer', 'Title Defense', 'Boss Wild Battle')
-
-
-def build_trainers():
-    """Vanilla first, as asked. But Vanilla is only documented for the eight gym
-    leaders -- the Elite Four, the rivals and the villain bosses exist in the
-    source spreadsheets only on the harder difficulties. Rather than ship a
+# ---------------------------------------------------------------- how to get it
+# Half the roster is not in a single patch of grass -- it is a gift, a static, a
+# raid, a trade, a Game Corner prize or the far end of an evolution line. The

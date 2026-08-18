@@ -1,3 +1,107 @@
+# acquisition table is the only version-matched source for that, so it is joined
+# here per species and anything that fails to join is printed rather than hidden.
+FORM_SUFFIX = {'alola': 'A', 'galar': 'G', 'hisui': 'H', 'paldea': 'P',
+               'gmax': 'Giga', 'mega': 'Mega', 'therian': 'Therian',
+               'origin': 'Origin', 'female': 'Female'}
+
+
+def acq_name(raw, known):
+    """The acquisition table writes forms as Vulpix-Alola and Garbodor-Gmax; the
+    sprite-derived names this site uses are Vulpix A and Garbodor Giga. The two
+    also disagree about apostrophes and full stops -- Farfetch’d against
+    Farfetchd, Mr.-Mime against Mr. Mime -- so the fallback match is on letters
+    and digits only."""
+    if raw in known:
+        return raw
+    flat = _flat(raw)
+    idx = _flat_index(known)
+    if flat in idx:
+        return idx[flat]
+    if '-' in raw:
+        base, suf = raw.rsplit('-', 1)
+        cand = _flat(f'{base} {FORM_SUFFIX.get(suf.lower(), suf)}')
+        if cand in idx:
+            return idx[cand]
+        if _flat(base) in idx:
+            return idx[_flat(base)]
+    return None
+
+
+def _flat(x):
+    return ''.join(c for c in x.lower().replace('’', "'") if c.isalnum())
+
+
+_FLAT_CACHE = {}
+
+
+def _flat_index(known):
+    key = id(known)
+    if key not in _FLAT_CACHE:
+        _FLAT_CACHE[key] = {_flat(n): n for n in known}
+    return _FLAT_CACHE[key]
+
+
+def build_acq(known):
+    p = os.path.join(SRC, 'fg/data/acquisition-data.json')
+    if not os.path.exists(p):
+        print('acq: no acquisition-data.json, skipping')
+        return {}
+    d = json.load(open(p))
+    out, missed = {}, set()
+
+    def add(raw, rec):
+        n = acq_name(raw, known)
+        if not n:
+            missed.add(raw)
+            return
+        out.setdefault(n, []).append(rec)
+
+    def clean(v):
+        v = (v or '').strip()
+        return '' if v.lower() in ('', 'none', 'n/a') else v
+
+    for r in d.get('gifts', []):
+        add(r['pokemon'], {'k': 'gift', 'm': r.get('method') or 'Gift',
+                           'w': clean(r.get('location')), 'd': clean(r.get('details'))})
+    for r in d.get('special', []):
+        add(r['pokemon'], {'k': 'static', 'm': r.get('method') or 'Static',
+                           'w': clean(r.get('location')), 'd': clean(r.get('details'))})
+    for r in d.get('trades', []):
+        add(r['pokemon'], {'k': 'trade', 'm': r.get('method') or 'NPC trade',
+                           'w': clean(r.get('location')), 'd': clean(r.get('details'))})
+
+    # 990 raid rows over 440 species, and nobody needs nine dens for one Pokemon.
+    # Keep the easiest few -- lowest star tier first, then lowest level.
+    byraid = {}
+    for r in d.get('raids', []):
+        byraid.setdefault(r['pokemon'], []).append(r)
+    for raw, rows in byraid.items():
+        rows.sort(key=lambda r: (min(r.get('stars') or [9]), r.get('levelMin') or 0))
+        for r in rows[:3]:
+            add(raw, {'k': 'raid', 'm': r.get('starTier') or 'Raid Den',
+                      'w': clean(r.get('location')),
+                      'd': ' · '.join(x for x in [
+                          f"Lv {r['level']}" if r.get('level') else '',
+                          f"needs {r['requirement']}" if clean(r.get('requirement')) else '',
+                          clean(r.get('availability'))] if x)})
+        if len(rows) > 3:
+            n = acq_name(raw, known)
+            if n:
+                out[n][-1]['more'] = len(rows) - 3
+    print(f'acq: {len(out)} species covered, {len(missed)} names unmatched'
+          + (f' ({sorted(missed)[:6]}...)' if missed else ''))
+    return out
+
+
+# ---------------------------------------------------------------- trainers
+BOSSY = ('Gym Leader', 'Rival', 'Pokémon League', 'Other Boss', 'Team Shadow',
+         'Team Light of Ruin', 'Mega Trainer', 'Title Defense', 'Boss Wild Battle')
+
+
+def build_trainers():
+    """Vanilla first, as asked. But Vanilla is only documented for the eight gym
+    leaders -- the Elite Four, the rivals and the villain bosses exist in the
+    source spreadsheets only on the harder difficulties. Rather than ship a
     Bosses tab with no champion in it, fall back to the lowest documented
     difficulty for those and label which one is being shown."""
     p = os.path.join(SRC, 'fg/data/battle-data.json')
@@ -61,20 +165,37 @@ fixed, still = resolve_names(maps)
 maps.sort(key=lambda m: m['name'])
 raids = build_raids()
 specials = build_specials()
-bosses, trainers, tmeta = build_trainers()
+acq = build_acq(set(NAME.values()))
 
-json.dump({'maps': maps, 'raids': raids, 'specials': specials,
-           'bosses': bosses, 'trainers': trainers},
-          open(os.path.join(OUT, 'world.json'), 'w'))
-
-nslot = sum(len(b['rows']) for m in maps for b in m['methods'].values())
-print(f'maps={len(maps)} rows={nslot} namesRecovered={fixed} stillUnnamed={still}')
-print(f'raid dens={len(raids)} raid species={sum(len(r["p"]) for r in raids)}')
-print(f'bosses={len(bosses)} regular trainers={len(trainers)}')
-print('boss modes:', dict(collections.Counter(b['mode'] for b in bosses)))
-print('boss categories:', dict(collections.Counter(b['c'] for b in bosses)))
-print('gyms:', [(b['gym'], b['n'], b['badge'], b['lv']) for b in bosses if b.get('gym')])
-print('specials:', {k: len(v) for k, v in specials.items()})
-ex = next((m for m in maps if 'Antisis City' == m['name']), maps[0])
-print('sample', ex['name'], {k: v['rows'][:2] for k, v in list(ex['methods'].items())[:2]})
-print('size KB:', os.path.getsize(os.path.join(OUT, 'world.json')) // 1024)
+# The legendaries, the Game Corner and the daily swarms live in a different
+# source, but from the app's point of view they are the same question -- how do
+# I get this thing -- so they fold into the same per-species index.
+for _l in specials.get('legendary', []):
+    _n = acq_name(_l.get('pokemon', ''), set(NAME.values()))
+    if _n:
+        acq.setdefault(_n, []).append({
+            'k': 'legend', 'm': 'Legendary',
+            'w': ', '.join(_l.get('locations') or []),
+            'd': ' · '.join((_l.get('requirements') or []) + (_l.get('notes') or []))})
+for _g in specials.get('gameCorner', []):
+    _n = acq_name(_g.get('pokemon', ''), set(NAME.values()))
+    # the acquisition table already lists the Game Corner prizes as gifts, so
+    # only add the ones it missed rather than printing each twice
+    if _n and not any(r.get('w') == _g.get('location') for r in acq.get(_n, [])):
+        acq.setdefault(_n, []).append({
+            'k': 'corner', 'm': 'Game Corner', 'w': _g.get('location', ''),
+            'd': f"{_g.get('coins')} coins"})
+_sw = {}
+for _d in specials.get('swarms', []):
+    for _e in _d.get('entries', []):
+        _n = acq_name(_e.get('pokemon', ''), set(NAME.values()))
+        if _n:
+            _sw.setdefault(_n, []).append((_d.get('day'), _e.get('time')))
+for _n, _hits in _sw.items():
+    _first = _hits[0]
+    acq.setdefault(_n, []).append({
+        'k': 'swarm', 'm': 'Swarm', 'w': '',
+        'd': f"day {_first[0]} at {_first[1]}"
+             + (f" and {len(_hits) - 1} other hour{'s' if len(_hits) > 2 else ''}"
+                if len(_hits) > 1 else '')})
+print('acq total:', len(acq), 'species with a documented way in')

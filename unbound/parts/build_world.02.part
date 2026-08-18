@@ -1,0 +1,38 @@
+bosses, trainers, tmeta = build_trainers()
+
+# 1053 acquisition rows share 147 distinct detail strings between them -- the
+# same "Unlocked after 6 badges and remains available thereafter" 46 times over.
+# Interning them turns 164 KB of payload into about 30.
+_strs, _sidx = [], {}
+
+
+def _S(x):
+    if not x:
+        return -1
+    if x not in _sidx:
+        _sidx[x] = len(_strs)
+        _strs.append(x)
+    return _sidx[x]
+
+
+acq_packed = {'s': _strs,
+              'r': {n: [[r['k'], _S(r['m']), _S(r['w']), _S(r['d']), r.get('more', 0)]
+                        for r in v] for n, v in acq.items()}}
+print('acq packed:', len(json.dumps(acq_packed)) // 1024, 'KB from',
+      len(json.dumps(acq)) // 1024, 'KB')
+
+json.dump({'maps': maps, 'raids': raids, 'specials': specials, 'acq': acq_packed,
+           'bosses': bosses, 'trainers': trainers},
+          open(os.path.join(OUT, 'world.json'), 'w'))
+
+nslot = sum(len(b['rows']) for m in maps for b in m['methods'].values())
+print(f'maps={len(maps)} rows={nslot} namesRecovered={fixed} stillUnnamed={still}')
+print(f'raid dens={len(raids)} raid species={sum(len(r["p"]) for r in raids)}')
+print(f'bosses={len(bosses)} regular trainers={len(trainers)}')
+print('boss modes:', dict(collections.Counter(b['mode'] for b in bosses)))
+print('boss categories:', dict(collections.Counter(b['c'] for b in bosses)))
+print('gyms:', [(b['gym'], b['n'], b['badge'], b['lv']) for b in bosses if b.get('gym')])
+print('specials:', {k: len(v) for k, v in specials.items()})
+ex = next((m for m in maps if 'Antisis City' == m['name']), maps[0])
+print('sample', ex['name'], {k: v['rows'][:2] for k, v in list(ex['methods'].items())[:2]})
+print('size KB:', os.path.getsize(os.path.join(OUT, 'world.json')) // 1024)
