@@ -32,7 +32,7 @@ pip install --quiet --disable-pip-version-check Pillow
 say "python $(python3 -V 2>&1) pillow ok"
 
 # ---- reassemble the build scripts ------------------------------------------
-# The pipeline is ~125 KB of Python and the file API this repo is written
+# The pipeline is ~150 KB of Python and the file API this repo is written
 # through truncates large writes silently -- a 14 KB push arrived as 5.5 KB
 # once. So each script ships as ordered <8.6 KB parts and is checksummed after
 # reassembly. A short read now fails the build instead of producing a subtly
@@ -52,15 +52,17 @@ check_script build_battle  35cf42c0bb78177f36f3768653cbb098e4f7ad965a4cf78564860
 check_script build_world   eb8b40f4a119d405297ee811c3aa5d3ebddf0fcd3cb252421c502640de868cf8
 check_script build_sprites bab889315631643edcc6ed89e5b6e182ad5795917c764a5385b6f9813bc3b5de
 check_script build_app     1f36455fa8e4f3a847289e9cf537ea11ab7ef58134813bff0c6bc398fb4813bd
+check_script patch_world   0722298418b9b4f7c161e0b6cef4cb4ee98551229f9276217f825d5925c666f8
 check_script patch_app     d0d5cb1cf0e5252a19774dbf9bd9ed486144af216fb9fb746b140c6b266285d3
-check_script patch2_app    4aec5964d7e0fcd24d3eb44647216283909f1b70cbba828aa5a28320a54ece55
+check_script patch2_app    84f084da1c9d21c8dfbb2a473da44284037a15f70e9e847c2b734650f943c6df
 
-# The app changes far more often than the 100 KB of parts it ships as, and
-# re-splitting the whole file for every tweak is the exact operation that
-# truncated a push once. So the parts stay at the baseline above and the patches
-# carry the difference, each checking the sha256 at both ends.
-python3 "$UBROOT/patch_app.py"  | tee -a "$ROOT/.log"
-python3 "$UBROOT/patch2_app.py" | tee -a "$ROOT/.log"
+# The app changes far more often than the parts it ships as, and re-splitting a
+# whole file for every tweak is the exact operation that truncated a push once.
+# So the parts stay at the baselines above and the patches carry the difference,
+# each checking the sha256 of what it is handed and of what it produces.
+python3 "$UBROOT/patch_world.py" | tee -a "$ROOT/.log"
+python3 "$UBROOT/patch_app.py"   | tee -a "$ROOT/.log"
+python3 "$UBROOT/patch2_app.py"  | tee -a "$ROOT/.log"
 
 # ---- pinned sources --------------------------------------------------------
 # The author's species tables. Cloned rather than fetched file by file because

@@ -1,0 +1,39 @@
+"""One small edit to build_world.py, carried as a patch.
+
+build_world only gained the Battle Frontier shop passthrough -- thirteen lines
+inside build_specials -- but byte-packed parts shift under any insertion, so
+re-splitting the file would have meant pushing all 19 KB of it to change 13
+lines. Same two-ended hash contract as the app patches.
+"""
+import hashlib, os
+
+BASE = 'eb8b40f4a119d405297ee811c3aa5d3ebddf0fcd3cb252421c502640de868cf8'
+WANT = 'db18d4305b6ea8b2aab4950837c5a9ade677f34118b75e8848b232641231eab2'
+path = os.path.join(os.environ.get('UBROOT', '.'), 'build_world.py')
+src = open(path, encoding='utf-8').read()
+got = hashlib.sha256(src.encode()).hexdigest()
+assert got == BASE, 'build_world.py is not the baseline this was built from: ' + got
+
+EDITS = [
+(198, 198, r'''    # The Battle Frontier sells Pokemon by name, which is the only documented
+    # route to a great many species -- every old starter among them. Keep just
+    # those two service entries rather than the whole 17 KB frontier section,
+    # and keep their availability line verbatim: the guide marks both Demo Only,
+    # which is the difference between an answer and a wrong answer.
+    shops = [x for x in (d.get('frontier') or {}).get('services', [])
+             if 'Shop' in x.get('name', '') and 'Pok' in x.get('name', '')]
+    if shops:
+        out['pokeshops'] = [{'n': x['name'], 'w': x.get('location', ''),
+                             'cost': x.get('cost', ''), 'avail': x.get('availability', ''),
+                             'd': x.get('details', '')} for x in shops]
+'''),
+]
+
+lines = src.splitlines(keepends=True)
+for a1, a2, text in reversed(EDITS):
+    lines[a1:a2] = [text]
+out = ''.join(lines)
+got = hashlib.sha256(out.encode()).hexdigest()
+assert got == WANT, 'patched build_world.py hashes wrong: ' + got
+open(path, 'w', encoding='utf-8').write(out)
+print('patch_world: build_world.py ->', len(out), 'bytes', got[:12])
