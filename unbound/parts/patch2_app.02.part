@@ -1,0 +1,77 @@
+          <h4>How to get things</h4>
+          <p>Gifts, statics, NPC trades, raid dens with their star tiers and unlock conditions, Game Corner
+          prizes, daily swarms and legendary requirements, from the same field guide's
+          <code>acquisition-data.json</code> — itself transcribed from the 2.1.1.1 raid and acquisition
+          spreadsheets, which it checksums. ${Object.keys(ACQ).length} species have a documented way in.
+          Everything else is reached by evolution, and the app walks the line back for you rather than
+          leaving you to guess.</p></div>
+'''),
+(2106, 2106, r'''  // leaving the tab a panel belongs to should close it, not strand it open
+  if(v!==view&&document.body.classList.contains('dw')&&!(v==='dex'||v==='locs')){
+    document.getElementById('drawer').classList.remove('open');
+    document.body.classList.remove('dw');
+    selSpecies=null; selLoc=null; selPlace=null;
+  }
+'''),
+(2131, 2131, r'''  const was=selSpecies;
+'''),
+(2132, 2135, r'''  drawerOpen(dexNo(n)||'Pokémon',n,speciesPanel(n));
+  // only the two affected cards need their marker moved, but the grid is
+  // virtualised anyway so a redraw is cheaper than hunting for them
+  if(was!==n) drawDex();
+  writeHash();
+'''),
+(2139, 2142, r'''  drawerOpen('Area',n,locPanel(n));
+  writeHash();
+'''),
+(2143, 2143, r'''/* ---------------- detail drawer ---------------- */
+function drawerOpen(kind,title,html){
+  const d=document.getElementById('drawer');
+  document.getElementById('dwkind').textContent=kind;
+  document.getElementById('dwtitle').textContent=title;
+  const body=document.getElementById('dwbody');
+  body.innerHTML=html;
+  body.scrollTop=0;
+  d.classList.add('open');
+  document.body.classList.add('dw');
+  d.setAttribute('aria-hidden','false');
+  wire();
+}
+function drawerClose(){
+  const d=document.getElementById('drawer');
+  d.classList.remove('open');
+  document.body.classList.remove('dw');
+  d.setAttribute('aria-hidden','true');
+  selSpecies=null; selLoc=null; selPlace=null;
+  // the grid marks the open card, and the map its open region
+  if(view==='dex') drawDex();
+  if(view==='locs'&&locView==='map') markPlace(null);
+  writeHash();
+}
+addEventListener('keydown',e=>{if(e.key==='Escape'&&document.body.classList.contains('dw')) drawerClose()});
+
+'''),
+(2182, 2182, r'''document.getElementById('dwclose').onclick=drawerClose;
+'''),
+(2247, 2248, r''''''),
+(2260, 2261, r''''''),
+(2269, 2269, r'''
+<aside class="drawer" id="drawer" aria-hidden="true" aria-label="Details">
+  <div class="dwhd">
+    <button class="dwx" id="dwclose" title="Close (Esc)" aria-label="Close">✕</button>
+    <div class="dwt" id="dwtitle"></div>
+    <div class="dwk" id="dwkind"></div>
+  </div>
+  <div class="dwbody" id="dwbody"></div>
+</aside>
+'''),
+]
+
+lines = src.splitlines(keepends=True)
+for a1, a2, text in reversed(EDITS):
+    lines[a1:a2] = [text]
+out = ''.join(lines)
+got = hashlib.sha256(out.encode()).hexdigest()
+assert got == WANT, 'patched build_app.py hashes wrong: ' + got
+open(path, 'w', encoding='utf-8').write(out)
+print('patch2_app: build_app.py ->', len(out), 'bytes', got[:12])

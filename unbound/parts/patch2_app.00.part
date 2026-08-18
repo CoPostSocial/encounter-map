@@ -1,0 +1,164 @@
+"""Second hop: bring build_app.py from the deployed build up to this one.
+
+patch_app already takes the shipped parts to the build that added the map. This
+carries the next change on top rather than regenerating that whole patch, which
+had grown to 41 KB. Same contract at both ends: it refuses to run unless the
+file it is handed is exactly what patch_app produced, and refuses to finish
+unless the result hashes to the build that was tested.
+
+Two hops is the limit worth keeping. The next change should re-split
+build_app.py into fresh parts and delete both patches.
+"""
+import hashlib, os
+
+BASE = 'e31b6470b8a23dbb1f729dff7518cbd50e0771c2c330db0cd60e2ce11f729da7'
+WANT = '38ba19be8835416f486f04eefa4d3a93731e638c9e8c8fee0f7be994879b7fcd'
+path = os.path.join(os.environ.get('UBROOT', '.'), 'build_app.py')
+src = open(path, encoding='utf-8').read()
+got = hashlib.sha256(src.encode()).hexdigest()
+assert got == BASE, 'build_app.py is not what patch_app produced: ' + got
+
+EDITS = [
+(75, 75, r'''    'acq': WORLD.get('acq', {}),
+'''),
+(429, 429, r'''/* ---------- detail drawer ----------
+   The detail used to render underneath the grid and smooth-scroll to itself,
+   which on a 1024-card Pokedex meant a long ride down and a longer one back.
+   It is a docked panel now: on a wide screen the page gives up the room and the
+   grid stays live beside it, so picking a second Pokemon just swaps the panel.
+   On a phone it is a full-height sheet with its own close. */
+.drawer{position:fixed;z-index:400;background:var(--bg);display:flex;flex-direction:column;
+  visibility:hidden}
+.drawer.open{visibility:visible}
+.dwhd{display:flex;align-items:center;gap:10px;padding:10px 14px;flex:none;
+  background:rgba(255,255,255,.94);backdrop-filter:blur(14px);border-bottom:3px solid var(--line)}
+.dwhd .dwt{font-size:15px;font-weight:800;letter-spacing:-.01em;flex:1;min-width:0;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dwhd .dwk{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;
+  color:var(--ink3);flex:none}
+.dwx{border:1px solid var(--line);background:var(--s2);color:var(--ink2);border-radius:999px;
+  width:34px;height:34px;flex:none;cursor:pointer;font:inherit;font-size:15px;font-weight:800;
+  display:grid;place-items:center}
+.dwx:hover{background:var(--accSoft);color:var(--acc2);border-color:var(--acc)}
+.dwbody{flex:1;overflow-y:auto;overscroll-behavior:contain;padding:14px;
+  -webkit-overflow-scrolling:touch}
+.dwbody .card{margin-bottom:14px}
+@media (min-width:940px){
+  :root{--dw:min(640px,46vw)}
+  .drawer{top:0;right:0;bottom:0;width:var(--dw);border-left:3px solid var(--line2);
+    box-shadow:-24px 0 50px -28px rgba(13,33,54,.45);
+    transform:translateX(101%);transition:transform .2s cubic-bezier(.2,.8,.3,1),visibility .2s}
+  .drawer.open{transform:none}
+  /* the page yields the space rather than being covered, so the grid stays usable */
+  body.dw header,body.dw .wrap,body.dw footer{padding-right:calc(var(--dw) + 18px)}
+}
+@media (max-width:939px){
+  .drawer{inset:0;transform:translateY(100%);transition:transform .22s cubic-bezier(.2,.8,.3,1),visibility .22s}
+  .drawer.open{transform:none}
+  body.dw{overflow:hidden}
+  .dwbody{padding:12px 12px 26px}
+}
+/* ---------- encounter method blocks ---------- */
+.methblk{margin-bottom:14px}
+.methblk:last-child{margin-bottom:0}
+.methhd{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;margin:0 0 8px;padding:6px 11px;
+  border-radius:10px;background:var(--s3)}
+.methhd .methname{font-size:12px;font-weight:800;letter-spacing:.02em}
+.methhd .methrate{font-size:11px;font-weight:800;color:var(--ink2)}
+.methhd .methn{font-size:11px;font-weight:700;color:var(--ink3);margin-left:auto}
+/* ---------- how to get it ---------- */
+.acqlist{display:grid;gap:7px}
+.acqrow{display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:12px;
+  border:1px solid var(--line);background:var(--s2);flex-wrap:wrap}
+.acqk{font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;
+  padding:4px 9px;border-radius:999px;border:1px solid;flex:none}
+.acqmain{flex:1;min-width:140px;font-size:13px;font-weight:700}
+.acqmain b{font-weight:800}
+.acqd{display:block;font-size:11.5px;font-weight:700;color:var(--ink2);margin-top:2px;line-height:1.4}
+.acqw{font-size:11.5px;font-weight:800;color:var(--ink2);flex:none}
+.linkish{border:0;background:none;font:inherit;font-weight:800;color:var(--acc2);cursor:pointer;
+  padding:0;text-decoration:underline;text-underline-offset:2px}
+.acqevo{margin-top:12px;padding:12px;border-radius:14px;border:1px dashed var(--line2);background:var(--s2)}
+.acqevohd{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;
+  color:var(--ink3);margin-bottom:8px}
+.acqstep{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12.5px;font-weight:700;
+  padding:6px 0}
+.acqstep .acqhow{color:var(--ink2);font-size:11.5px}
+.acqstep .acqto{font-weight:800}
+/* ---------- evolution chain ---------- */
+.evochain{display:flex;align-items:stretch;gap:10px;overflow-x:auto;padding:2px 0 6px}
+.evostage{display:flex;flex-direction:column;gap:8px;justify-content:center;flex:none}
+.evolab{font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;
+  color:var(--ink3);text-align:center}
+.evoarrow{display:flex;align-items:center;justify-content:center;color:var(--ink3);
+  font-size:20px;font-weight:800;flex:none;padding-top:14px}
+.evomon{display:flex;flex-direction:column;align-items:center;gap:2px;padding:10px 12px;
+  border-radius:15px;border:1px solid var(--line);cursor:pointer;font:inherit;text-align:center;
+  min-width:132px;max-width:170px;position:relative;isolation:isolate;overflow:hidden;transition:.14s}
+.evomon::before{content:'';position:absolute;inset:0;z-index:-1;background:var(--g);opacity:.55}
+.evomon:hover{transform:translateY(-2px);box-shadow:0 12px 24px -14px rgba(13,33,54,.45)}
+.evomon b{font-size:13.5px;font-weight:800;line-height:1.2}
+.evomon .how{font-size:10.5px;font-weight:700;color:var(--ink2);line-height:1.35;margin-top:2px}
+.evomon.cur{border-color:var(--acc);box-shadow:0 0 0 2px var(--accSoft)}
+.evomon .youare{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;
+  color:var(--acc2);margin-top:3px}
+'''),
+(824, 825, r'''/* ---------------- evolution ----------------
+   The game only ever states evolution forwards -- Gastly carries "Level 25 ->
+   Haunter" and Gengar carries nothing -- so a species had no way of knowing what
+   it came from. Inverting the table once at load gives every Pokemon its parents,
+   and from there the whole family can be walked from its root and drawn as one
+   chain, with the species you are looking at marked in it. */
+const PRE={}, FORMOF={};
+for(const n in M){
+  for(const s of M[n].evo||[]){
+    const i=s.lastIndexOf('→'); if(i<0) continue;
+    const to=s.slice(i+1).trim();
+    if(M[to]) (PRE[to] ||= []).push({n,how:s.slice(0,i).trim()});
+  }
+  // The form table is written both ways round -- Gengar lists Gengar Giga and
+  // Gengar Giga lists Gengar right back -- so only keep the link that actually
+  // points at a form, or walking it loops forever between the two.
+  for(const f of M[n].forms||[])
+    if(M[f.to]&&f.to.startsWith(n+' ')) FORMOF[f.to]={n,how:f.how};
+}
+function evoKids(n){
+  const out=[];
+  for(const s of (M[n]||{}).evo||[]){
+    const i=s.lastIndexOf('→'); if(i<0) continue;
+    const to=s.slice(i+1).trim();
+    if(M[to]&&SPR.index[to]!==undefined) out.push({n:to,how:s.slice(0,i).trim()});
+  }
+  return out;
+}
+function evoRoot(n){
+  const seen=new Set([n]);
+  let cur=n;
+  // guarded rather than while(true): a cyclic table would otherwise hang the page
+  for(let g=0;g<8;g++){
+    const p=(PRE[cur]||[])[0];
+    if(!p||seen.has(p.n)) break;
+    seen.add(p.n); cur=p.n;
+  }
+  return cur;
+}
+function evoStages(root){
+  const stages=[[{n:root,how:''}]], seen=new Set([root]);
+  for(let d=0;d<5;d++){
+    const next=[];
+    for(const node of stages[d]) for(const k of evoKids(node.n))
+      if(!seen.has(k.n)){seen.add(k.n); next.push(k)}
+    if(!next.length) break;
+    stages.push(next);
+  }
+  return stages;
+}
+function evoChip(x,cur){
+  return `<button class="evomon${x.n===cur?' cur':''}" data-sp="${esc(x.n)}" style="${cardTint(x.n)}">
+    ${sprite(x.n,52)}<b>${esc(x.n)}</b>
+    ${x.how?`<span class="how">${esc(x.how)}</span>`:''}
+    ${x.n===cur?'<span class="youare">you are here</span>':''}</button>`;
+}
+'''),
+(826, 836, r'''  // a Mega or Gigantamax is not its own family -- show the base form's
+  const base=FORMOF[name]?FORMOF[name].n:name;

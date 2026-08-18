@@ -1,0 +1,155 @@
+  const root=evoRoot(base), stages=evoStages(root);
+  const forms=(M[base]||{}).forms||[];
+  const single=stages.length===1&&stages[0].length===1;
+  if(single&&!forms.length&&!FORMOF[name]) return `<div class="sec">
+    <div class="sechd"><h3>Evolution</h3></div>
+    <div class="mut" style="font-size:13px">${esc(name)} neither evolves nor comes from anything —
+      it is a family of one.</div></div>`;
+  const chain=stages.map((st,i)=>
+    `${i?'<div class="evoarrow">→</div>':''}<div class="evostage">
+      ${i?`<div class="evolab">Stage ${i+1}</div>`:'<div class="evolab">Base</div>'}
+      ${st.map(x=>evoChip(x,name)).join('')}</div>`).join('');
+  // Haunter reaches Gengar by trade and by Link Stone; that is one parent, not two
+  const pre=[...new Map((PRE[base]||[]).map(p=>[p.n,p])).values()];
+  return `<div class="sec"><div class="sechd"><h3>Evolution</h3>
+      <span class="mut" style="font-size:11.5px">${
+        pre.length?`comes from ${pre.map(p=>esc(p.n)).join(' or ')}`
+          :single?'no evolutions':'start of the line'}</span></div>
+    ${single?'':`<div class="evochain">${chain}</div>`}
+    ${pre.length>1?`<div class="mut" style="font-size:11.5px;margin-top:8px">More than one Pokémon
+      evolves into this; the chain above follows ${esc(pre[0].n)}.</div>`:''}
+    ${forms.length?`<div class="sechd" style="margin-top:14px"><h3>Forms</h3>
+      <span class="mut" style="font-size:11.5px">battle-only transformations, not evolutions</span></div>
+      <div class="evochain">${forms.filter(f=>SPR.index[f.to]!==undefined).map(f=>
+        `<div class="evostage">${evoChip({n:f.to,how:f.how},name)}</div>`).join('')}</div>`:''}
+    ${FORMOF[name]?`<div class="mut" style="font-size:12px;margin-top:10px">${esc(name)} is a form of
+      <button class="minipill" data-sp="${esc(FORMOF[name].n)}">${esc(FORMOF[name].n)}</button> —
+      ${esc(FORMOF[name].how.toLowerCase())}.</div>`:''}
+  </div>`;
+}
+
+/* ---------------- how to get it ----------------
+   Half the roster is not standing in a patch of grass. A gift, a static, a raid,
+   an NPC trade, a Game Corner prize, a swarm hour, a legendary requirement -- or,
+   most often, the far end of an evolution line that starts somewhere else
+   entirely. Jolteon appears in no table in this game; the honest answer is
+   "buy an Eevee for 1500 coins and use a Thunder Stone", and that is two joins
+   away from anything the encounter data knows. */
+const ACQ={};
+{
+  // the acquisition rows ship with their strings interned; unpack once
+  const A=D.acq||{}, S=A.s||[], pick=i=>i>=0?S[i]:'';
+  for(const n in A.r||{}) ACQ[n]=A.r[n].map(a=>
+    ({k:a[0],m:pick(a[1]),w:pick(a[2]),d:pick(a[3]),more:a[4]||0}));
+}
+const ACQK={wild:['Wild','#2fa36a'],gift:['Gift','#c9702a'],static:['Static','#7a52ea'],
+  trade:['Trade','#1587e8'],raid:['Raid','#e8348a'],corner:['Game Corner','#b56d00'],
+  swarm:['Swarm','#0f8f8f'],legend:['Legendary','#8a5b00'],evo:['Evolution','#c02a09']};
+function acqPill(k){
+  const [l,c]=ACQK[k]||['Other','#4d6280'];
+  return `<span class="acqk" style="background:${c}1f;color:${c};border-color:${c}55">${l}</span>`;
+}
+function acqRow(k,main,where,note){
+  return `<div class="acqrow">${acqPill(k)}
+    <div class="acqmain"><b>${main}</b>${note?`<span class="acqd">${note}</span>`:''}</div>
+    ${where?`<div class="acqw">${where}</div>`:''}</div>`;
+}
+// A direct way in: wild, or anything the acquisition table documents.
+function acqDirect(n){
+  const out=[], w=WHERE[n]||[];
+  for(const x of w.slice(0,3)) out.push(acqRow('wild',
+    `<button class="linkish" data-loc="${esc(x.loc)}">${esc(x.loc)}</button>`,
+    `${x.pct}% · Lv ${x.min===x.max?x.min:x.min+'–'+x.max}`, esc(x.label)));
+  if(w.length>3) out.push(`<div class="mut" style="font-size:11.5px">+${w.length-3} more wild spots below</div>`);
+  for(const r of ACQ[n]||[]) out.push(acqRow(r.k,esc(r.m),
+    r.w?esc(r.w):'', [r.d?esc(r.d):'', r.more?`+${r.more} more dens`:''].filter(Boolean).join(' · ')));
+  return out;
+}
+function acqHas(n){return (WHERE[n]||[]).length>0||(ACQ[n]||[]).length>0}
+// Walk back through forms and pre-evolutions until something is actually
+// obtainable, so the answer ends somewhere you can stand.
+function acqRoute(n){
+  const steps=[], seen=new Set([n]); let cur=n;
+  for(let g=0;g<7;g++){
+    const f=FORMOF[cur];
+    const p=f||(PRE[cur]||[])[0];
+    if(!p||seen.has(p.n)) break;
+    steps.unshift({from:p.n,to:cur,how:f?f.how:p.how});
+    seen.add(p.n); cur=p.n;
+    if(acqHas(cur)) break;
+  }
+  return {steps,root:cur,rooted:acqHas(cur)};
+}
+function acqSection(name){
+  const direct=acqDirect(name), rt=acqRoute(name);
+  const parts=[];
+  if(direct.length) parts.push(`<div class="acqlist">${direct.join('')}</div>`);
+  if(rt.steps.length){
+    const chain=rt.steps.map(st=>
+      `<div class="acqstep"><button class="linkish" data-sp="${esc(st.from)}">${esc(st.from)}</button>
+        <span class="acqhow">${esc(st.how)}</span>
+        <span class="acqto">→ ${esc(st.to)}</span></div>`).join('');
+    parts.push(`<div class="acqevo">
+      <div class="acqevohd">${direct.length?'Or evolve into it':'Not catchable — evolve into it'}</div>
+      ${rt.rooted
+        ? `<div class="mut" style="font-size:12px;margin-bottom:8px">Start with
+            <button class="linkish" data-sp="${esc(rt.root)}">${esc(rt.root)}</button> —
+            ${(WHERE[rt.root]||[]).length?'catchable in the wild':'not in the grass either'}, here is how:</div>`
+        : `<div class="mut" style="font-size:12px;margin-bottom:8px">Nothing in the line has a documented
+            way in either, so ${esc(rt.root)} is likely a gift, a trade or an event this data does not
+            cover.</div>`}
+      ${chain}
+      ${rt.rooted?`<div class="acqlist" style="margin-top:10px">${acqDirect(rt.root).join('')}</div>`:''}
+    </div>`);
+  }
+  if(!parts.length) parts.push(`<div class="mut" style="font-size:13px">No documented way to get this one.
+    It is in the game's species table but appears in no encounter table, no raid den, no gift, trade or
+    prize list, and nothing evolves into it — so it is probably an event, a mission reward or a form this
+    data does not describe.</div>`);
+  return `<div class="sec"><div class="sechd"><h3>How to get it</h3>
+    <span class="mut" style="font-size:11.5px">${
+      (WHERE[name]||[]).length?'catchable in the wild'
+      :(ACQ[name]||[]).length?'not in the grass — see below'
+      :rt.steps.length?'evolution only':'no documented route'}</span></div>${parts.join('')}</div>`;
+'''),
+(882, 882, r'''    ${acqSection(name)}
+'''),
+(1229, 1231, r'''        <span class="mut" style="font-size:11.5px">${methBlocks(m).length} method${
+          methBlocks(m).length===1?'':'s'}</span>
+'''),
+(1232, 1239, r'''        ${methBlocks(m).map(b=>methSection(b,40)).join('')}
+'''),
+(1317, 1320, r'''  markPlace(n);
+  drawerOpen('Place',n,placePanel(n));
+  writeHash();
+}
+
+// Encounter methods come out of the table in whatever order the source listed
+// them, which put a night grass block between two fishing blocks. Grass first,
+// then the rest of the land, then water, then the rods in rod order -- and each
+// block gets its own heading rather than repeating the method on every row.
+const METHORD=['tall grass','grass','long grass','dark grass','cave','rock smash','headbutt',
+  'surf','surfing','old rod','good rod','super rod','fishing'];
+function methRank(label){
+  const l=label.toLowerCase();
+  for(let i=0;i<METHORD.length;i++) if(l.startsWith(METHORD[i])) return i*10+(/night/.test(l)?1:0);
+  return 900;
+}
+function methBlocks(m){
+  return Object.values(m.methods).sort((a,b)=>
+    methRank(a.label)-methRank(b.label)||a.label.localeCompare(b.label));
+}
+function methSection(b,size){
+  return `<div class="methblk">
+    <div class="methhd"><span class="methname">${esc(b.label)}</span>
+      <span class="methrate">${b.rate}% per step</span>
+      <span class="methn">${b.rows.length} entr${b.rows.length===1?'y':'ies'}</span></div>
+    <div class="mons">${b.rows.map(r=>`<button class="mon" data-sp="${esc(r.s)}" style="${tint(r.s)}">
+      ${sprite(r.s,size||44)}<div class="who"><b>${esc(r.s)}</b>${badges(r.s)}</div>
+      <div class="lv">Lv ${r.min===r.max?r.min:r.min+'–'+r.max}</div>
+      <div class="bar"><i style="width:${Math.max(r.pct,2)}%"></i></div>
+      <div class="pc">${r.pct}%</div></button>`).join('')}</div></div>`;
+'''),
+(1332, 1340, r'''    <div class="sec">${methBlocks(m).map(b=>methSection(b)).join('')}</div>
+'''),
+(2084, 2084, r'''        <div class="src"><span class="tag comm">Community · version-matched</span>
